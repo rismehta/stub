@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />  
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mock API Creator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="container">
+    <aside class="left-panel">
+      <h1 class="left-title">Mock API Creator</h1>
+    </aside>
+    <section class="right-panel">
+      <form id="mockApiForm" novalidate>
+        <label for="apiName">API Name (Path) <span class="required">*</span></label>
+        <input type="text" id="apiName" required placeholder="e.g., users, orders" />
+
+        <label for="predicateRequest">Request Body Matching Criteria (Optional)</label>
+        <span style="color: #888; font-size: 13px;">
+             <em>Input in valid Json format. The presence of keys should be exactly at the same nesting level in request payload.</em>
+            </span>
+            </label>
+        <textarea id="predicateRequest" placeholder='e.g., { "userType": "admin" }'></textarea>
+
+       <label for="requestPayload">
+        Request Payload (Optional)
+            <span style="color: #888; font-size: 13px;">
+             <br>
+             <em>Input in valid Json format. If Request Body Matching Criteria is not provided, this value will be considered for request body matching.</em>
+            </span>
+            </label>
+        <textarea id="requestPayload" placeholder='e.g., { "id": 123 }'></textarea>
+
+        <label for="responseHeaders">Response Headers JSON (optional)</label>
+        <textarea id="responseHeaders" placeholder='e.g., { "x-powered-by": "nodejs" }'></textarea>
+
+        <label for="responseBody">Response Body JSON <span class="required">*</span></label>
+        <span style="color: #888; font-size: 13px;">
+             <em>Input in valid Json format.</em>
+            </span>
+            </label>
+        <textarea id="responseBody" required placeholder='e.g., { "status": "success" }'></textarea>
+
+        <button type="submit" id="submitBtn">Save Mock</button>
+        <div id="message" class="message"></div>
+      </form>
+    </section>
+  </div>
+<script src="script.js"></script>
+</body>
+</html>
