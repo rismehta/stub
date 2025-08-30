@@ -2,5 +2,5 @@
 
 ## High level design
 
-![Design](images/Design.jpeg)
+![Design](image/Design.jpeg)
 
