@@ -2,5 +2,5 @@
 
 ## High level design
 
-![Logo](images/logo.png)
+![Design](images/Design.jpeg)
 
