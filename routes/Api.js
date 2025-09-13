@@ -7,6 +7,7 @@ const Counter = require('../models/Counter');
 
 const MB_URL = process.env.MB_URL || 'http://localhost:2525';
 const PROXY_URL=process.env.PROXY_URL || "http://localhost"
+const MB_PROXY_HOST=process.env.MB_PROXY_HOST ||"localhost"
 
 // Port management - increment counter in MongoDB
 async function getNextPort() {
@@ -64,7 +65,7 @@ function buildStubs(apiMocks) {
         var authHeader = request.headers['authorization'] || '';
         var combinedHeaders = Object.assign({}, userHeaders);
         if (authHeader) {
-          combinedHeaders['authorization'] = authHeader;
+          combinedHeaders['authorization'] = authHeader;    
         }
         return {
           statusCode: 200,
@@ -107,10 +108,15 @@ async function upsertImposter(apiName, port, apiMocks) {
 
 // Keep proxy map updated with API port
 let apiPortMap = {};
+
 async function updateProxyMap(apiName, port) {
-  apiPortMap[apiName] = port;
+  apiPortMap[apiName] = {
+    host: MB_PROXY_HOST,
+    port: port
+  };
   try {
     await axios.post(`${PROXY_URL}:${process.env.CONTROL_API_PORT}/update-map`, apiPortMap);
+    console.log(`Updated proxy map for API ${apiName}:`, apiPortMap[apiName]);
   } catch (e) {
     console.error('Failed to update proxy map:', e);
   }

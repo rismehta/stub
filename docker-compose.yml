@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:5
+    container_name: mockapi-mongo
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  mountebank:
+    image: bbyars/mountebank:latest
+    container_name: mockapi-mountebank
+    restart: always
+    ports:
+      - "2525:2525"
+    command: ["--allowInjection", "--loglevel", "debug"]
+
+  backend:
+    build: .
+    container_name: mockapi-backend
+    restart: always
+    depends_on:
+      - mongo
+      - mountebank
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/mock-api-db
+      - MB_URL=http://mountebank:2525
+      - BACKEND_PORT=3000
+      - PROXY_PORT=8080
+      - CONTROL_API_PORT=3001
+      - PORT_COUNTER_START=4000
+    ports:
+      - "3000:3000"
+    command: node server.js
+
+  proxy:
+    build: .
+    container_name: mockapi-proxy
+    depends_on:
+      - backend
+    environment:
+      - PROXY_PORT=8080
+      - CONTROL_API_PORT=3001
+    ports:
+      - "8080:8080"
+      - "3001:3001"
+    command: node ReverseProxy.js
+
+volumes:
+  mongo_data:

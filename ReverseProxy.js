@@ -10,10 +10,13 @@ const PROXY_URL=process.env.PROXY_URL || "http://localhost";
 const proxy = httpProxy.createProxyServer({});
 let apiPortMap = {};
 
-const server = http.createServer((req, res) => {    
+const server = http.createServer((req, res) => {
   const apiName = req.url.split('/')[1];
-  if (apiName && apiPortMap[apiName]) {
-    proxy.web(req, res, { target: `${PROXY_URL}:${apiPortMap[apiName]}` }, (err) => {
+  const targetInfo = apiPortMap[apiName];
+
+  if (apiName && targetInfo && targetInfo.host && targetInfo.port) {
+    const target = `http://${targetInfo.host}:${targetInfo.port}`;
+    proxy.web(req, res, { target }, (err) => {
       res.writeHead(502);
       res.end('Bad Gateway: ' + err.message);
     });
