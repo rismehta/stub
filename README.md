@@ -147,8 +147,4 @@ docker-compose restart
 - Use `contains` predicates in mocks for flexible matching.
 - Use Mountebank admin UI (`http://localhost:2525`) for monitoring imposters directly if needed.
 
----
 
-For any issues or contributions, please refer to project issues or contact the maintainer.
-
----
