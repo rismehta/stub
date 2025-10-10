@@ -14,6 +14,11 @@ function buildStubs(apiMocks) {
   return apiMocks.map(doc => {
     const predicates = [];
 
+    // Match based on path containing the API name (primary predicate)
+    predicates.push({ contains: { path: `/${doc.apiName}` } });
+    predicates.push({ equals: { method: 'POST' } });
+    
+    // Optional: match on request body if provided
     const requestPred =
       doc.predicate && Object.keys(doc.predicate.request || {}).length > 0
         ? doc.predicate.request
@@ -24,10 +29,6 @@ function buildStubs(apiMocks) {
     if (requestPred) {
       predicates.push({ contains: { body: requestPred } });
     }
-    
-    // Match based on path containing the API name
-    predicates.push({ contains: { path: `/${doc.apiName}` } });
-    predicates.push({ equals: { method: 'POST' } });
 
     // Prepare JSON strings safely
     const responseBodyStr = JSON.stringify(doc.responseBody || {});
@@ -78,8 +79,12 @@ async function upsertImposter(apiMocks) {
     // Create new imposter with all stubs
     await axios.post(`${MB_URL}/imposters`, imposter);
     console.log(`Imposter updated on port ${MB_IMPOSTER_PORT} with ${apiMocks.length} stubs`);
+    console.log('Stubs created for APIs:', apiMocks.map(m => m.apiName).join(', '));
   } catch (err) {
     console.error('Error upserting imposter:', err.message);
+    if (err.response) {
+      console.error('Mountebank error:', JSON.stringify(err.response.data, null, 2));
+    }
     throw err;
   }
 }
@@ -146,6 +151,26 @@ router.post('/reloadAllImposters', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reload imposters' });
+  }
+});
+
+// Debug endpoint - check what's in Mountebank
+router.get('/debug/imposters', async (req, res) => {
+  try {
+    const response = await axios.get(`${MB_URL}/imposters/${MB_IMPOSTER_PORT}`);
+    res.json({
+      port: MB_IMPOSTER_PORT,
+      stubCount: response.data.stubs?.length || 0,
+      stubs: response.data.stubs?.map(stub => ({
+        predicates: stub.predicates,
+        hasResponse: !!stub.responses
+      })) || []
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      error: 'Failed to get imposter info',
+      message: err.message 
+    });
   }
 });
 
