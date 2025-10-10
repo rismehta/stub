@@ -6,8 +6,11 @@ services:
     repo: https://github.com/rismehta/stub.git
     branch: main
     dockerfilePath: ./Dockerfile.mountebank
-    dockerCommand: mb start --allowInjection --loglevel debug
+    dockerCommand: mb start --allowInjection --loglevel debug --port 10000
     plan: free
+    envVars:
+      - key: MB_PORT
+        value: 10000
 
   # Backend Service
   - type: web
@@ -22,7 +25,7 @@ services:
       - key: MONGODB_URI
         sync: false  # You'll set this manually in Render dashboard
       - key: MB_URL
-        value: http://mockapi-mountebank:2525
+        value: http://mockapi-mountebank:10000
       - key: BACKEND_PORT
         value: 3000
       - key: CONTROL_API_PORT
