@@ -6,8 +6,8 @@ services:
     repo: https://github.com/rismehta/stub.git
     branch: main
     dockerfilePath: ./Dockerfile.mountebank
+    dockerCommand: mb start --allowInjection --loglevel debug
     plan: free
-    healthCheckPath: /
 
   # Backend Service
   - type: web
