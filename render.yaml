@@ -40,9 +40,8 @@ services:
   - type: web
     name: mockapi-mountebank
     env: docker
-    image: bbyars/mountebank:latest
-    dockerCommand: mb --allowInjection --loglevel debug
-    envVars: []
+    dockerfilePath: ./Dockerfile.mountebank
+    plan: starter
 
 databases:
   # MongoDB Database
