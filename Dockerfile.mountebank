@@ -4,5 +4,5 @@ FROM bbyars/mountebank:latest
 EXPOSE 2525
 
 # Start Mountebank with required flags
-CMD ["mb", "--allowInjection", "--loglevel", "debug"]
+CMD ["mb", "start", "--allowInjection", "--loglevel", "debug"]
 
