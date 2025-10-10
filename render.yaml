@@ -1,15 +1,26 @@
 services:
+  # Mountebank Service
+  - type: web
+    name: mockapi-mountebank
+    runtime: docker
+    repo: https://github.com/rismehta/stub.git
+    branch: main
+    dockerfilePath: ./Dockerfile.mountebank
+    plan: free
+    healthCheckPath: /
+
   # Backend Service
   - type: web
     name: mockapi-backend
-    env: docker
+    runtime: docker
+    repo: https://github.com/rismehta/stub.git
+    branch: main
     dockerfilePath: ./Dockerfile
     dockerCommand: node server.js
+    plan: free
     envVars:
       - key: MONGODB_URI
-        fromDatabase:
-          name: mockapi-mongo
-          property: connectionString
+        sync: false  # You'll set this manually in Render dashboard
       - key: MB_URL
         value: http://mockapi-mountebank:2525
       - key: BACKEND_PORT
@@ -22,30 +33,24 @@ services:
         value: http://mockapi-proxy
       - key: MB_PROXY_HOST
         value: mockapi-mountebank
+      - key: BACKEND_BASE_URL
+        value: http://mockapi-backend
     healthCheckPath: /
 
   # Reverse Proxy Service
   - type: web
     name: mockapi-proxy
-    env: docker
+    runtime: docker
+    repo: https://github.com/rismehta/stub.git
+    branch: main
     dockerfilePath: ./Dockerfile
     dockerCommand: node ReverseProxy.js
+    plan: free
     envVars:
       - key: PROXY_PORT
         value: 8080
       - key: CONTROL_API_PORT
         value: 3001
-
-  # Mountebank Service
-  - type: web
-    name: mockapi-mountebank
-    env: docker
-    dockerfilePath: ./Dockerfile.mountebank
-    plan: starter
-
-databases:
-  # MongoDB Database
-  - name: mockapi-mongo
-    databaseName: mock-api-db
-    user: mockapi
+      - key: PROXY_URL
+        value: http://mockapi-proxy
 
