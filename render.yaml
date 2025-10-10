@@ -1,0 +1,52 @@
+services:
+  # Backend Service
+  - type: web
+    name: mockapi-backend
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node server.js
+    envVars:
+      - key: MONGODB_URI
+        fromDatabase:
+          name: mockapi-mongo
+          property: connectionString
+      - key: MB_URL
+        value: http://mockapi-mountebank:2525
+      - key: BACKEND_PORT
+        value: 3000
+      - key: CONTROL_API_PORT
+        value: 3001
+      - key: PORT_COUNTER_START
+        value: 4000
+      - key: PROXY_URL
+        value: http://mockapi-proxy
+      - key: MB_PROXY_HOST
+        value: mockapi-mountebank
+    healthCheckPath: /
+
+  # Reverse Proxy Service
+  - type: web
+    name: mockapi-proxy
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node ReverseProxy.js
+    envVars:
+      - key: PROXY_PORT
+        value: 8080
+      - key: CONTROL_API_PORT
+        value: 3001
+
+  # Mountebank Service
+  - type: web
+    name: mockapi-mountebank
+    env: docker
+    image: bbyars/mountebank:latest
+    dockerCommand: mb --allowInjection --loglevel debug
+    envVars: []
+
+databases:
+  # MongoDB Database
+  - name: mockapi-mongo
+    databaseName: mock-api-db
+    user: mockapi
+
