@@ -66,7 +66,7 @@ The system works by allowing users to create mock API definitions saved in Mongo
 
 ### Steps
 
-1. Clone the repository: https://git.corp.adobe.com/HDFC/stub-generator.git
+1. Clone the repository
 2. cd your-project-folder
 3. Build and start all containers (MongoDB, Mountebank, backend, proxy):docker-compose up --build
 
