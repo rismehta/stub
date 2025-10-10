@@ -22,6 +22,7 @@ function buildStubs(apiMocks) {
     const requestPred =
       doc.predicate && Object.keys(doc.predicate.request || {}).length > 0
         ? doc.predicate.request
+        
         : doc.requestPayload && Object.keys(doc.requestPayload || {}).length > 0
         ? doc.requestPayload
         : null;
@@ -30,33 +31,19 @@ function buildStubs(apiMocks) {
       predicates.push({ contains: { body: requestPred } });
     }
 
-    // Prepare JSON strings safely
-    const responseBodyStr = JSON.stringify(doc.responseBody || {});
-    const responseHeadersStr = JSON.stringify(doc.responseHeaders || { 'content-type': 'application/json' });
-
-    // Template literal for injection function as a string
-    const injectFn = `
-      function(request) {
-        var responseBody = ${responseBodyStr};
-        var userHeaders = ${responseHeadersStr};
-        var authHeader = request.headers['authorization'] || '';
-        var combinedHeaders = Object.assign({}, userHeaders);
-        if (authHeader) {
-          combinedHeaders['authorization'] = authHeader;    
-        }
-        return {
-          statusCode: 200,
-          headers: combinedHeaders,
-          body: responseBody
-        };
-      }
-    `;
+    // Use simple 'is' response instead of injection for reliability
+    const headers = doc.responseHeaders || {};
+    headers['content-type'] = headers['content-type'] || 'application/json';
 
     return {
       predicates,
       responses: [
         {
-          inject: injectFn
+          is: {
+            statusCode: 200,
+            headers: headers,
+            body: doc.responseBody
+          }
         }
       ]
     };
