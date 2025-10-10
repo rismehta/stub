@@ -4,8 +4,9 @@ const axios = require('axios');
 
 const ApiMock = require('../models/ApiMock');
 
+// In combined setup, Mountebank runs in same container on localhost
 const MB_URL = process.env.MB_URL || 'http://localhost:2525';
-const MB_PORT = process.env.MB_PORT || 10000;
+const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 const IMPOSTER_NAME = 'mock-api-imposter';
 
 // Build Mountebank stubs from DB records
@@ -64,7 +65,7 @@ function buildStubs(apiMocks) {
 // Create or update the single Mountebank imposter with all stubs
 async function upsertImposter(apiMocks) {
   const imposter = {
-    port: parseInt(MB_PORT),
+    port: parseInt(MB_IMPOSTER_PORT),
     protocol: 'http',
     name: IMPOSTER_NAME,
     stubs: buildStubs(apiMocks)
@@ -72,11 +73,11 @@ async function upsertImposter(apiMocks) {
 
   try {
     // Delete existing imposter if exists (ignore error if not found)
-    await axios.delete(`${MB_URL}/imposters/${MB_PORT}`).catch(() => {});
+    await axios.delete(`${MB_URL}/imposters/${MB_IMPOSTER_PORT}`).catch(() => {});
 
     // Create new imposter with all stubs
     await axios.post(`${MB_URL}/imposters`, imposter);
-    console.log(`Imposter updated on port ${MB_PORT} with ${apiMocks.length} stubs`);
+    console.log(`Imposter updated on port ${MB_IMPOSTER_PORT} with ${apiMocks.length} stubs`);
   } catch (err) {
     console.error('Error upserting imposter:', err.message);
     throw err;
@@ -120,7 +121,7 @@ router.post('/saveOrUpdate', async (req, res) => {
 
     res.json({ 
       message: 'Mock saved and imposter updated', 
-      port: MB_PORT,
+      port: MB_IMPOSTER_PORT,
       apiName: apiName 
     });
   } catch (err) {

@@ -30,7 +30,7 @@ services:
     environment:
       - MONGODB_URI=mongodb://mongo:27017/mock-api-db
       - MB_URL=http://mountebank:2525
-      - MB_PORT=2525
+      - MB_IMPOSTER_PORT=4000
       - BACKEND_PORT=3000
     ports:
       - "3000:3000"
@@ -45,7 +45,7 @@ services:
     environment:
       - PROXY_PORT=8080
       - MB_PROXY_HOST=mountebank
-      - MB_PORT=2525
+      - MB_IMPOSTER_PORT=4000
     ports:
       - "8080:8080"
     command: node ReverseProxy.simple.js

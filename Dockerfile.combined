@@ -1,0 +1,29 @@
+# Combined Dockerfile - Runs both Mountebank and Backend
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install Mountebank globally
+RUN npm install -g mountebank@2.9.1
+
+# Copy package files and install app dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy application code
+COPY . .
+
+# Create startup script
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "Starting Mountebank..."' >> /app/start.sh && \
+    echo 'mb --allowInjection --loglevel info --port 2525 &' >> /app/start.sh && \
+    echo 'echo "Waiting for Mountebank to start..."' >> /app/start.sh && \
+    echo 'sleep 3' >> /app/start.sh && \
+    echo 'echo "Starting Backend..."' >> /app/start.sh && \
+    echo 'node server.js' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+EXPOSE 10000
+
+CMD ["/app/start.sh"]
+

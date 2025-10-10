@@ -1,25 +1,11 @@
 services:
-  # Mountebank Service - Single imposter handles all mocks
-  - type: web
-    name: mockapi-mountebank
-    runtime: docker
-    repo: https://github.com/rismehta/stub.git
-    branch: main
-    dockerfilePath: ./Dockerfile.mountebank
-    dockerCommand: mb start --allowInjection --loglevel debug --port 10000
-    plan: free
-    envVars:
-      - key: PORT
-        value: 10000
-
-  # Backend Service - Manages mocks in single Mountebank imposter
+  # Backend + Mountebank Combined Service
   - type: web
     name: mockapi-backend
     runtime: docker
     repo: https://github.com/rismehta/stub.git
     branch: main
-    dockerfilePath: ./Dockerfile
-    dockerCommand: node server.js
+    dockerfilePath: ./Dockerfile.combined
     plan: free
     envVars:
       - key: PORT
@@ -27,28 +13,24 @@ services:
       - key: MONGODB_URI
         sync: false  # Set this manually in Render dashboard
       - key: MB_URL
-        value: http://mockapi-mountebank:10000
-      - key: MB_PORT
-        value: 10000
+        value: http://localhost:2525
+      - key: MB_IMPOSTER_PORT
+        value: 4000
       - key: BACKEND_PORT
         value: 10000
     healthCheckPath: /
 
-  # Reverse Proxy Service - Forwards all requests to Mountebank
+  # Proxy Service - Forwards to backend's /mock endpoint
   - type: web
     name: mockapi-proxy
     runtime: docker
     repo: https://github.com/rismehta/stub.git
     branch: main
     dockerfilePath: ./Dockerfile
-    dockerCommand: node ReverseProxy.simple.js
+    dockerCommand: node ReverseProxy.render-combined.js
     plan: free
     envVars:
       - key: PORT
         value: 10000
-      - key: PROXY_PORT
-        value: 10000
-      - key: MB_PROXY_HOST
-        value: mockapi-mountebank
-      - key: MB_PORT
-        value: 10000
+      - key: BACKEND_URL
+        value: https://mockapi-backend.onrender.com

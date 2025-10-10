@@ -6,17 +6,30 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const axios = require('axios');
+const httpProxy = require('http-proxy');
 
 const apiRoutes = require('./routes/Api');
 
 const app = express();
+const proxy = httpProxy.createProxyServer({});
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', apiRoutes);
 
-const PORT = process.env.BACKEND_PORT || 5000;
+// Forward all mock API requests to local Mountebank imposter
+const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
+app.use('/mock', (req, res) => {
+  const target = `http://localhost:${MB_IMPOSTER_PORT}`;
+  console.log(`Forwarding mock request ${req.method} ${req.url} to ${target}`);
+  proxy.web(req, res, { target }, (err) => {
+    console.error('Proxy error:', err.message);
+    res.status(502).json({ error: 'Bad Gateway: ' + err.message });
+  });
+});
+
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 10000;
 const BACKEND_BASE_URL=process.env.BACKEND_BASE_URL|| "http://localhost"
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost/mock-api-db';
 

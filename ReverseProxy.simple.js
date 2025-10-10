@@ -3,14 +3,13 @@ const http = require('http');
 const httpProxy = require('http-proxy');
 
 const PROXY_PORT = process.env.PORT || process.env.PROXY_PORT || 8080;
-const MB_URL = process.env.MB_URL || 'http://localhost:2525';
 const MB_HOST = process.env.MB_PROXY_HOST || 'localhost';
-const MB_PORT = process.env.MB_PORT || 10000;
+const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 
 const proxy = httpProxy.createProxyServer({});
 
-// Target is always Mountebank - single imposter handles all APIs
-const target = `http://${MB_HOST}:${MB_PORT}`;
+// Target is the Mountebank imposter (not the admin API)
+const target = `http://${MB_HOST}:${MB_IMPOSTER_PORT}`;
 
 const server = http.createServer((req, res) => {
   console.log(`Proxying ${req.method} ${req.url} to ${target}`);

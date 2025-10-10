@@ -1,0 +1,46 @@
+# Docker Compose for testing Render combined architecture locally
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:5
+    container_name: mockapi-mongo-combined
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data_combined:/data/db
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.combined
+    container_name: mockapi-backend-combined
+    restart: always
+    depends_on:
+      - mongo
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/mock-api-db
+      - MB_URL=http://localhost:2525
+      - MB_IMPOSTER_PORT=4000
+      - BACKEND_PORT=3000
+      - PORT=3000
+    ports:
+      - "3000:3000"
+
+  proxy:
+    build: .
+    container_name: mockapi-proxy-combined
+    restart: always
+    depends_on:
+      - backend
+    environment:
+      - PORT=8080
+      - BACKEND_URL=http://backend:3000
+    ports:
+      - "8080:8080"
+    command: node ReverseProxy.render-combined.js
+
+volumes:
+  mongo_data_combined:
+
