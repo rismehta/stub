@@ -39,7 +39,10 @@ curl -X POST https://mockapi-proxy.onrender.com/test/hello \
 git clone https://github.com/rismehta/stub.git
 cd stub
 
-# Start all services
+# Quick start (recommended)
+./start.sh
+
+# Or manually
 docker-compose up -d
 
 # Access the UI
@@ -47,6 +50,11 @@ open http://localhost:3000
 
 # Use mocks at
 curl http://localhost:8080/your-api-name
+
+# Stop services
+./stop.sh
+# Or manually
+docker-compose down
 ```
 
 **📖 Full local setup guide:** [LOCAL_SETUP.md](./LOCAL_SETUP.md)
