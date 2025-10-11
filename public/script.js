@@ -98,6 +98,8 @@ form.addEventListener('submit', async (e) => {
   }
 
   submitBtn.disabled = true;
+  const originalBtnText = submitBtn.textContent;
+  submitBtn.textContent = currentEditId ? 'Updating...' : 'Saving...';
 
   const payload = {
     apiName,
@@ -123,7 +125,8 @@ form.addEventListener('submit', async (e) => {
     });
     const data = await resp.json();
     if (resp.ok) {
-      showSuccess(`Success! Mock ${currentEditId ? 'updated' : 'created'} for API: ${apiName}`);
+      const action = currentEditId ? 'updated' : 'created';
+      showSuccess(`✅ Success! Mock ${action} for API: ${apiName}`);
       resetForm();
       formTitle.textContent = 'Create New Mock';
       cancelBtn.style.display = 'none';
@@ -131,15 +134,22 @@ form.addEventListener('submit', async (e) => {
       
       // Reload mocks list if on manage tab
       if (document.getElementById('manageTab').classList.contains('active')) {
-        setTimeout(() => loadMocks(), 1000);
+        setTimeout(() => loadMocks(), 500);
       }
+      
+      // Auto-dismiss success message after 3 seconds
+      setTimeout(() => {
+        messageDiv.textContent = '';
+        messageDiv.className = 'message';
+      }, 3000);
     } else {
-      showError(data.error || 'Server error');
+      showError('❌ ' + (data.error || 'Server error'));
     }
   } catch (e) {
-    showError('Network or server error');
+    showError('❌ Network or server error');
   } finally {
     submitBtn.disabled = false;
+    submitBtn.textContent = originalBtnText;
   }
 });
 
@@ -199,6 +209,7 @@ async function loadMocks() {
             </div>
             <div class="stub-actions">
               <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
+              <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
               <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
             </div>
           </div>
@@ -255,21 +266,69 @@ window.editMock = async function(id) {
   }
 };
 
+// Clone mock (create new from existing)
+window.cloneMock = async function(id) {
+  try {
+    const resp = await fetch(`/api/mocks/${id}`);
+    if (!resp.ok) {
+      alert('Failed to load mock');
+      return;
+    }
+    
+    const mock = await resp.json();
+    
+    // Fill form WITHOUT setting mockId (so it creates new)
+    document.getElementById('mockId').value = '';
+    document.getElementById('apiName').value = mock.apiName;
+    document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
+    document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
+    document.getElementById('requestPayload').value = JSON.stringify(mock.requestPayload || {}, null, 2);
+    document.getElementById('responseHeaders').value = JSON.stringify(mock.responseHeaders || {}, null, 2);
+    document.getElementById('responseBody').value = JSON.stringify(mock.responseBody || {}, null, 2);
+    
+    // Switch to create tab
+    document.querySelector('.tab-btn[data-tab="create"]').click();
+    
+    // Update UI
+    formTitle.textContent = 'Clone Mock (Create New)';
+    cancelBtn.style.display = 'inline-block';
+    currentEditId = null; // Important: null so it creates new
+    
+    // Scroll to top
+    window.scrollTo(0, 0);
+    
+    // Show message to user
+    showSuccess('Mock loaded! Modify predicates or response and save to create a new stub.');
+    
+  } catch (err) {
+    alert('Error loading mock: ' + err.message);
+  }
+};
+
 // Delete mock
 window.deleteMock = async function(id, apiName) {
-  if (!confirm(`Delete this mock for "${apiName}"?`)) {
+  if (!confirm(`🗑️  Delete this mock for "${apiName}"?\n\nThis action cannot be undone.`)) {
     return;
   }
+  
+  // Show loading state
+  const mocksList = document.getElementById('mocksList');
+  const originalContent = mocksList.innerHTML;
+  mocksList.innerHTML = '<p class="loading">Deleting mock...</p>';
   
   try {
     const resp = await fetch(`/api/mocks/${id}`, { method: 'DELETE' });
     if (resp.ok) {
-      loadMocks();
+      // Show success message briefly then reload
+      mocksList.innerHTML = '<p class="success" style="color: #556b2f; padding: 2rem; text-align: center; font-size: 1.1rem;">✅ Mock deleted successfully!</p>';
+      setTimeout(() => loadMocks(), 800);
     } else {
       const data = await resp.json();
-      alert('Failed to delete: ' + (data.error || 'Unknown error'));
+      mocksList.innerHTML = originalContent;
+      alert('❌ Failed to delete: ' + (data.error || 'Unknown error'));
     }
   } catch (err) {
-    alert('Error deleting mock: ' + err.message);
+    mocksList.innerHTML = originalContent;
+    alert('❌ Error deleting mock: ' + err.message);
   }
 };

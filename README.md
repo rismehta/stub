@@ -18,7 +18,7 @@ A powerful, production-ready platform for creating and managing mock APIs using 
 
 ### Option 1: Try the Live Demo
 
-**Create Mocks:** https://mockapi-backend.onrender.com  
+**Create Mocks:** https://mockapi-backend-09lz.onrender.com  
 **Use Mocks:** https://mockapi-proxy.onrender.com
 
 **Example:**
@@ -98,7 +98,7 @@ docker-compose down
 ### Creating Mocks
 
 **1. Open the UI**
-- Production: https://mockapi-backend.onrender.com
+- Production: https://mockapi-backend-09lz.onrender.com
 - Local: http://localhost:3000
 
 **2. Fill in the form:**
@@ -112,6 +112,11 @@ docker-compose down
 | Response Headers | Custom response headers | ❌ Optional |
 
 **3. Save the mock**
+
+**4. Managing Mocks**
+- **Edit**: Modify an existing mock
+- **Clone**: Create a new mock based on an existing one (great for creating variations!)
+- **Delete**: Remove a mock
 
 ---
 
@@ -390,17 +395,17 @@ Frontend and backend teams work independently.
 
 1. **Check mock exists:**
    ```bash
-   curl https://mockapi-backend.onrender.com/api/mocks
+   curl https://mockapi-backend-09lz.onrender.com/api/mocks
    ```
 
 2. **Check Mountebank state:**
    ```bash
-   curl https://mockapi-backend.onrender.com/api/debug/imposters
+   curl https://mockapi-backend-09lz.onrender.com/api/debug/imposters
    ```
 
 3. **Test direct call:**
    ```bash
-   curl -X POST https://mockapi-backend.onrender.com/api/debug/testMock/your-api-name \
+   curl -X POST https://mockapi-backend-09lz.onrender.com/api/debug/testMock/your-api-name \
      -H "Content-Type: application/json" \
      -d '{"test": "data"}'
    ```
@@ -467,7 +472,7 @@ MIT License - feel free to use this in your projects!
 
 - **Issues**: [GitHub Issues](https://github.com/rismehta/stub/issues)
 - **Documentation**: See `/docs` folder
-- **Live Demo**: https://mockapi-backend.onrender.com
+- **Live Demo**: https://mockapi-backend-09lz.onrender.com
 
 ---
 

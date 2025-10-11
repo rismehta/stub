@@ -148,15 +148,33 @@ button#submitBtn:disabled {
   user-select: none;
   min-height: 1.5em;
   color: #6b4e30;
-  transition: color 0.25s ease;
+  transition: all 0.3s ease;
+  padding: 0.75rem;
+  border-radius: 12px;
 }
 
 .message.error {
-  color: #a0321f;
+  color: #fff;
+  background: #dc2626;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
 }
 
 .message.success {
-  color: #556b2f;
+  color: #fff;
+  background: #16a34a;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Tabs */
@@ -217,10 +235,14 @@ button#submitBtn:disabled {
 
 .btn-secondary {
   background: linear-gradient(90deg, #999, #666) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
 }
 
 .btn-secondary:hover {
   background: linear-gradient(90deg, #777, #555) !important;
+  box-shadow: 4px 6px 16px rgba(102, 102, 102, 0.5) !important;
 }
 
 /* Mocks list */
@@ -304,7 +326,7 @@ button#submitBtn:disabled {
   gap: 0.5rem;
 }
 
-.btn-edit, .btn-delete {
+.btn-edit, .btn-clone, .btn-delete {
   padding: 0.4rem 1rem;
   border: none;
   border-radius: 8px;
@@ -321,6 +343,15 @@ button#submitBtn:disabled {
 
 .btn-edit:hover {
   background: #3a6348;
+}
+
+.btn-clone {
+  background: #2563eb;
+  color: white;
+}
+
+.btn-clone:hover {
+  background: #1d4ed8;
 }
 
 .btn-delete {
@@ -378,9 +409,11 @@ button#submitBtn:disabled {
   
   .stub-actions {
     width: 100%;
+    flex-wrap: wrap;
   }
   
-  .btn-edit, .btn-delete {
+  .btn-edit, .btn-clone, .btn-delete {
     flex: 1;
+    min-width: 80px;
   }
 }
