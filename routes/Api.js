@@ -32,10 +32,12 @@ function buildStubs(apiMocks) {
     }
 
     // Use simple 'is' response instead of injection for reliability
-    const headers = doc.responseHeaders || {};
-    headers['content-type'] = headers['content-type'] || 'application/json';
+    const headers = Object.assign({}, doc.responseHeaders || {});
+    if (!headers['content-type']) {
+      headers['content-type'] = 'application/json';
+    }
 
-    return {
+    const stub = {
       predicates,
       responses: [
         {
@@ -47,6 +49,13 @@ function buildStubs(apiMocks) {
         }
       ]
     };
+
+    // Debug log for first stub
+    if (doc.apiName === 'rish') {
+      console.log('Creating stub for rish:', JSON.stringify(stub, null, 2));
+    }
+
+    return stub;
   });
 }
 
@@ -150,13 +159,39 @@ router.get('/debug/imposters', async (req, res) => {
       stubCount: response.data.stubs?.length || 0,
       stubs: response.data.stubs?.map(stub => ({
         predicates: stub.predicates,
-        hasResponse: !!stub.responses
+        responses: stub.responses
       })) || []
     });
   } catch (err) {
     res.status(500).json({ 
       error: 'Failed to get imposter info',
       message: err.message 
+    });
+  }
+});
+
+// Debug endpoint - test direct Mountebank call
+router.post('/debug/testMock/:apiName', async (req, res) => {
+  try {
+    const { apiName } = req.params;
+    const response = await axios.post(
+      `http://localhost:${MB_IMPOSTER_PORT}/${apiName}`,
+      req.body,
+      { 
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 5000
+      }
+    );
+    res.json({
+      message: 'Direct Mountebank call succeeded',
+      status: response.status,
+      data: response.data
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: 'Direct Mountebank call failed',
+      message: err.message,
+      timeout: err.code === 'ECONNABORTED'
     });
   }
 });
