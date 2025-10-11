@@ -1,49 +1,34 @@
 require('dotenv').config();
 const http = require('http');
 const httpProxy = require('http-proxy');
-const express = require('express');
 
-const PROXY_PORT = process.env.PROXY_PORT || 8080;
-const CONTROL_API_PORT = process.env.CONTROL_API_PORT || 3005;
-const PROXY_URL=process.env.PROXY_URL || "http://localhost";
+const PROXY_PORT = process.env.PORT || 10000;
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:10000';
 
-const proxy = httpProxy.createProxyServer({});
-let apiPortMap = {};
+const proxy = httpProxy.createProxyServer({
+  changeOrigin: true,
+  secure: true
+});
 
 const server = http.createServer((req, res) => {
-  const apiName = req.url.split('/')[1];
-  const targetInfo = apiPortMap[apiName];
-
-  if (apiName && targetInfo && targetInfo.host && targetInfo.port) {
-    const target = `http://${targetInfo.host}:${targetInfo.port}`;
-    proxy.web(req, res, { target }, (err) => {
-      res.writeHead(502);
-      res.end('Bad Gateway: ' + err.message);
-    });
-  } else {
-    res.writeHead(404);
-    res.end('API Not Found');
-  }
+  // Forward all requests to backend's /mock endpoint
+  const targetPath = `/mock${req.url}`;
+  const target = `${BACKEND_URL}${targetPath}`;
+  
+  console.log(`Proxying ${req.method} ${req.url} to ${target}`);
+  
+  // Rewrite the URL to include /mock prefix
+  req.url = targetPath;
+  
+  proxy.web(req, res, { target: BACKEND_URL }, (err) => {
+    console.error('Proxy error:', err.message);
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+    res.end('Bad Gateway: ' + err.message);
+  });
 });
 
 server.listen(PROXY_PORT, () => {
-  console.log(`Reverse proxy listening on port ${PROXY_PORT}`);
+  console.log(`Proxy listening on port ${PROXY_PORT}`);
+  console.log(`Forwarding all requests to ${BACKEND_URL}/mock/*`);
 });
 
-// Control API for updating map
-const app = express();
-app.use(express.json());
-
-app.post('/update-map', (req, res) => {
-  if (typeof req.body === 'object') {
-    apiPortMap = { ...req.body };
-    console.log('Proxy map updated:', apiPortMap);
-    res.json({ message: 'Map updated' });
-  } else {
-    res.status(400).json({ error: 'Invalid format' });
-  }
-});
-
-app.listen(CONTROL_API_PORT, () => {
-  console.log(`Proxy control API running on port ${CONTROL_API_PORT}`);
-});

@@ -27,7 +27,7 @@ services:
     repo: https://github.com/rismehta/stub.git
     branch: main
     dockerfilePath: ./Dockerfile
-    dockerCommand: node ReverseProxy.render-combined.js
+    dockerCommand: node ReverseProxy.js
     plan: free
     envVars:
       - key: PORT

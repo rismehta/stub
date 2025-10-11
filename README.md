@@ -57,8 +57,6 @@ curl http://localhost:8080/your-api-name
 docker-compose down
 ```
 
-**📖 Full local setup guide:** [LOCAL_SETUP.md](./LOCAL_SETUP.md)
-
 ---
 
 ## 📋 Architecture
@@ -92,7 +90,6 @@ docker-compose down
                  └──────────┘
 ```
 
-**📖 Detailed architecture:** [COMBINED_ARCHITECTURE.md](./COMBINED_ARCHITECTURE.md)
 
 ---
 
@@ -286,6 +283,7 @@ curl -X POST https://mockapi-proxy.onrender.com/admin/action \
 ```
 stub-generator/
 ├── server.js                      # Backend entry point
+├── ReverseProxy.js                # Proxy service
 ├── routes/
 │   └── Api.js                     # Mock CRUD + Mountebank integration
 ├── models/
@@ -295,18 +293,13 @@ stub-generator/
 │   ├── index.html                 # Web UI
 │   ├── script.js                  # Frontend logic
 │   └── style.css                  # Styling
-├── ReverseProxy.js                # Original proxy
-├── ReverseProxy.simple.js         # Single imposter proxy
-├── ReverseProxy.render-combined.js # Production proxy
 ├── Dockerfile                     # Node.js container
-├── Dockerfile.combined            # Backend + Mountebank
-├── docker-compose.yml             # Local development (standard)
-├── docker-compose.combined.yml    # Local development (matches prod)
+├── Dockerfile.combined            # Backend + Mountebank container
+├── docker-compose.yml             # Local development
 ├── render.yaml                    # Render deployment config
-└── docs/
-    ├── LOCAL_SETUP.md             # Local development guide
-    ├── COMBINED_ARCHITECTURE.md   # Architecture details
-    └── DEPLOY_COMBINED.md         # Deployment guide
+├── start.sh                       # Quick start script
+├── stop.sh                        # Stop script
+└── README.md                      # This file - complete documentation
 ```
 
 ---
@@ -328,7 +321,6 @@ stub-generator/
    - `MONGODB_URI`: Your MongoDB Atlas connection string
    - `BACKEND_URL`: Backend public URL (for proxy)
 
-**📖 Full deployment guide:** [DEPLOY_COMBINED.md](./DEPLOY_COMBINED.md)
 
 ---
 
@@ -341,11 +333,11 @@ stub-generator/
 ### Start Services
 
 ```bash
-# Standard architecture (easier debugging)
+# Start all services
 docker-compose up -d
 
-# Combined architecture (matches production)
-docker-compose -f docker-compose.combined.yml up -d
+# Or use quick-start script
+./start.sh
 ```
 
 ### Access Points
@@ -368,7 +360,6 @@ docker-compose logs -f backend
 docker-compose down
 ```
 
-**📖 Full local setup guide:** [LOCAL_SETUP.md](./LOCAL_SETUP.md)
 
 ---
 
@@ -439,10 +430,12 @@ docker-compose logs -f
 
 ## 📖 Documentation
 
-- [LOCAL_SETUP.md](./LOCAL_SETUP.md) - Local development guide
-- [COMBINED_ARCHITECTURE.md](./COMBINED_ARCHITECTURE.md) - Architecture details
-- [DEPLOY_COMBINED.md](./DEPLOY_COMBINED.md) - Deployment guide
-- [INJECT_VS_IS.md](./INJECT_VS_IS.md) - Mountebank response types
+All documentation is contained in this README. See sections above for:
+- Architecture (production and local)
+- Usage examples and API endpoints
+- Local development setup
+- Deployment guide
+- Troubleshooting
 
 ---
 

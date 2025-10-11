@@ -48,7 +48,7 @@ services:
       - BACKEND_URL=http://backend:3000
     ports:
       - "8080:8080"
-    command: node ReverseProxy.render-combined.js
+    command: node ReverseProxy.js
 
 volumes:
   mongo_data:

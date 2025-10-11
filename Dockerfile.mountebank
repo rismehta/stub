@@ -1,8 +1,0 @@
-FROM bbyars/mountebank:latest
-
-# Expose Mountebank port
-EXPOSE 2525
-
-# Start Mountebank with required flags
-CMD ["mb", "start", "--allowInjection", "--loglevel", "debug"]
-
