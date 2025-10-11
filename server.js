@@ -18,8 +18,8 @@ app.use('/api', apiRoutes);
 
 // Forward all mock API requests to local Mountebank imposter using axios
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
-app.all('/mock/*', async (req, res) => {
-  const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url.replace('/mock', '')}`;
+app.use('/mock', async (req, res) => {
+  const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url}`;
   console.log(`Forwarding mock request ${req.method} ${req.url} to ${targetUrl}`);
   
   try {
