@@ -6,27 +6,44 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const axios = require('axios');
-const httpProxy = require('http-proxy');
 
 const apiRoutes = require('./routes/Api');
 
 const app = express();
-const proxy = httpProxy.createProxyServer({});
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', apiRoutes);
 
-// Forward all mock API requests to local Mountebank imposter
+// Forward all mock API requests to local Mountebank imposter using axios
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
-app.use('/mock', (req, res) => {
-  const target = `http://localhost:${MB_IMPOSTER_PORT}`;
-  console.log(`Forwarding mock request ${req.method} ${req.url} to ${target}`);
-  proxy.web(req, res, { target }, (err) => {
-    console.error('Proxy error:', err.message);
-    res.status(502).json({ error: 'Bad Gateway: ' + err.message });
-  });
+app.all('/mock/*', async (req, res) => {
+  const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url.replace('/mock', '')}`;
+  console.log(`Forwarding mock request ${req.method} ${req.url} to ${targetUrl}`);
+  
+  try {
+    const response = await axios({
+      method: req.method,
+      url: targetUrl,
+      data: req.body,
+      headers: {
+        'Content-Type': 'application/json',
+        ...req.headers
+      },
+      timeout: 10000
+    });
+    
+    console.log(`Received response from Mountebank: ${response.status}`);
+    res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error('Error forwarding to Mountebank:', err.message);
+    if (err.response) {
+      res.status(err.response.status).json(err.response.data);
+    } else {
+      res.status(502).json({ error: 'Bad Gateway: ' + err.message });
+    }
+  }
 });
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 10000;
