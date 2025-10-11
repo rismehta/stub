@@ -287,8 +287,7 @@ stub-generator/
 ├── routes/
 │   └── Api.js                     # Mock CRUD + Mountebank integration
 ├── models/
-│   ├── ApiMock.js                 # Mock schema
-│   └── Counter.js                 # Auto-increment helper
+│   └── ApiMock.js                 # Mock schema
 ├── public/
 │   ├── index.html                 # Web UI
 │   ├── script.js                  # Frontend logic
