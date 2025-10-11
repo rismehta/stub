@@ -234,15 +234,18 @@ button#submitBtn:disabled {
 }
 
 .btn-secondary {
-  background: linear-gradient(90deg, #999, #666) !important;
-  color: #fff !important;
-  font-weight: 700 !important;
+  background: linear-gradient(90deg, #c9b89a, #a89675) !important;
+  color: #5b3e1b !important;
+  font-weight: 800 !important;
   cursor: pointer !important;
+  box-shadow: 4px 6px 16px rgba(169, 150, 117, 0.4) !important;
+  border: 2px solid #a67c52 !important;
 }
 
 .btn-secondary:hover {
-  background: linear-gradient(90deg, #777, #555) !important;
-  box-shadow: 4px 6px 16px rgba(102, 102, 102, 0.5) !important;
+  background: linear-gradient(90deg, #b5a688, #96805f) !important;
+  box-shadow: 5px 8px 20px rgba(150, 128, 95, 0.6) !important;
+  transform: translateY(-1px);
 }
 
 /* Mocks list */
