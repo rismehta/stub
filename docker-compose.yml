@@ -39,16 +39,16 @@ services:
   proxy:
     build: .
     container_name: mockapi-proxy
+    restart: always
     depends_on:
       - backend
-      - mountebank
     environment:
+      - PORT=8080
       - PROXY_PORT=8080
-      - MB_PROXY_HOST=mountebank
-      - MB_IMPOSTER_PORT=4000
+      - BACKEND_URL=http://backend:3000
     ports:
       - "8080:8080"
-    command: node ReverseProxy.simple.js
+    command: node ReverseProxy.render-combined.js
 
 volumes:
   mongo_data:

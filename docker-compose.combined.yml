@@ -23,10 +23,11 @@ services:
       - MONGODB_URI=mongodb://mongo:27017/mock-api-db
       - MB_URL=http://localhost:2525
       - MB_IMPOSTER_PORT=4000
-      - BACKEND_PORT=3000
       - PORT=3000
+      - BACKEND_PORT=3000
     ports:
       - "3000:3000"
+    # Mountebank runs inside this container on port 2525
 
   proxy:
     build: .
@@ -36,6 +37,7 @@ services:
       - backend
     environment:
       - PORT=8080
+      - PROXY_PORT=8080
       - BACKEND_URL=http://backend:3000
     ports:
       - "8080:8080"

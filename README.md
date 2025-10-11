@@ -1,150 +1,474 @@
-# Mock API Proxy Server with Mountebank and MongoDB
+# Mock API Platform
+
+A powerful, production-ready platform for creating and managing mock APIs using Mountebank. Perfect for development, testing, and API virtualization.
+
+## ✨ Features
+
+- 🎨 **Beautiful Web UI** - Create and manage mocks with an intuitive interface
+- 🔄 **Dynamic Predicates** - Match requests by path, body, and headers
+- 📝 **CRUD Operations** - List, create, edit, and delete mocks
+- 🚀 **Production Ready** - Deployed on Render with MongoDB Atlas
+- 🐳 **Docker Support** - Run locally with Docker Compose
+- 🔐 **Header Matching** - Support for Authorization, API keys, custom headers
+- 🎯 **Drop-in Replacement** - Use same API paths as your production API
 
 ---
 
-## 1. Introduction
+## 🚀 Quick Start
 
-This project provides a full-featured mock API platform leveraging Mountebank for service virtualization, MongoDB for persistence of mock data, and a Node.js-based reverse proxy and backend API management system. It enables developers and testers to easily create, manage, and test API mocks dynamically through a modern UI and API interface.
+### Option 1: Try the Live Demo
 
-The system works by allowing users to create mock API definitions saved in MongoDB, which the backend converts into Mountebank imposters running on dynamic ports. The reverse proxy dynamically routes API requests to the appropriate stubbed services by mapping API names to running Mountebank imposter ports.
+**Create Mocks:** https://mockapi-backend.onrender.com  
+**Use Mocks:** https://mockapi-proxy.onrender.com
 
----
-
-
-## Design
-
-![Design](image/Design.jpeg)
-
-### Architecture Overview
-
-- **Backend API Server:**  
-  - Node.js/Express app managing mock API CRUD operations and MongoDB storage.  
-  - Dynamically creates or updates Mountebank imposters via its admin API.  
-  - Maintains an API-to-imposter port map and pushes it to the proxy for routing.
-
-- **Reverse Proxy Server:**  
-  - Node.js custom proxy server intercepting incoming API requests.  
-  - Routes requests to the correct Mountebank imposter based on the API name and port map.  
-  - Exposes a control API (`/update-map`) to receive real-time routing map updates from backend.
-
-- **Mountebank Imposters:**  
-  - Each mock API is represented as a Mountebank imposter running on an assigned port.  
-  - Supports flexible predicates and expected responses.  
-  - UI and backend interact to create/delete imposters dynamically.
-
-- **MongoDB Database:**  
-  - Persists mock API definitions and configuration.
-
-  ### Data Flow
-
-1. User creates or updates a mock API via the UI or API.  
-2. Backend saves the mock in MongoDB, creates/updates a Mountebank imposter on a dynamic port.  
-3. Backend updates the routing map (API name → {host, port}) and pushes it to the proxy `/update-map` endpoint.  
-4. Proxy uses this map to forward HTTP requests to the correct Mountebank port transparently.  
-5. Responses from Mountebank imposters return to the client.
+**Example:**
+```bash
+# 1. Create a mock in the UI with API name "test/hello"
+# 2. Test it:
+curl -X POST https://mockapi-proxy.onrender.com/test/hello \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
 
 ---
 
-## 3. Tech Stack
+### Option 2: Run Locally with Docker
 
-| Component        | Technology                | Purpose                                  |
-|------------------|---------------------------|------------------------------------------|
-| Backend Server   | Node.js + Express         | API management, imposter lifecycle       |
-| Reverse Proxy    | Node.js + http-proxy      | Dynamic routing of API requests           |
-| Mock Server      | Mountebank                | Service virtualization and mocking        |
-| Database        | MongoDB                   | Persisting mock API definitions           |
-| UI              | React / Static frontend (served from backend) | User interface for mock API creation |
+```bash
+# Clone the repository
+git clone https://github.com/rismehta/stub.git
+cd stub
+
+# Start all services
+docker-compose up -d
+
+# Access the UI
+open http://localhost:3000
+
+# Use mocks at
+curl http://localhost:8080/your-api-name
+```
+
+**📖 Full local setup guide:** [LOCAL_SETUP.md](./LOCAL_SETUP.md)
 
 ---
 
-## 4. Installation Steps (with Docker)
+## 📋 Architecture
+
+### Production (Render)
+
+```
+┌──────────┐     ┌─────────────────────────┐
+│  Proxy   │────▶│ Backend + Mountebank    │
+│ (Public) │     │  (Internal MB :2525)    │
+└──────────┘     └─────────────────────────┘
+                           │
+                           ▼
+                   ┌──────────────┐
+                   │ MongoDB Atlas│
+                   └──────────────┘
+```
+
+### Local (Docker Compose)
+
+```
+┌──────────┐     ┌──────────┐     ┌────────────┐
+│  Proxy   │────▶│ Backend  │────▶│ Mountebank │
+│  :8080   │     │  :3000   │     │   :2525    │
+└──────────┘     └──────────┘     └────────────┘
+                       │
+                       ▼
+                 ┌──────────┐
+                 │ MongoDB  │
+                 │  :27017  │
+                 └──────────┘
+```
+
+**📖 Detailed architecture:** [COMBINED_ARCHITECTURE.md](./COMBINED_ARCHITECTURE.md)
+
+---
+
+## 💻 Usage
+
+### Creating Mocks
+
+**1. Open the UI**
+- Production: https://mockapi-backend.onrender.com
+- Local: http://localhost:3000
+
+**2. Fill in the form:**
+
+| Field | Description | Required |
+|-------|-------------|----------|
+| API Name | The path for your mock (e.g., `users/login`) | ✅ Yes |
+| Request Body Matching | JSON to match in request body | ❌ Optional |
+| Request Headers Matching | Headers to match (e.g., `Authorization`) | ❌ Optional |
+| Response Body | JSON response to return | ✅ Yes |
+| Response Headers | Custom response headers | ❌ Optional |
+
+**3. Save the mock**
+
+---
+
+### Using Mocks in Your App
+
+**Change your API base URL:**
+
+```javascript
+// Before
+const API_BASE_URL = 'https://api.production.com';
+
+// After (use mocks)
+const API_BASE_URL = 'https://mockapi-proxy.onrender.com';
+
+// Same API calls work!
+fetch(`${API_BASE_URL}/users/login`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer token123'
+  },
+  body: JSON.stringify({ username: 'admin' })
+})
+```
+
+**That's it! No code changes needed.** 🎉
+
+---
+
+## 📚 Examples
+
+### Example 1: Simple Mock
+
+**Create in UI:**
+- **API Name**: `hello/world`
+- **Response Body**: `{"message": "Hello World!"}`
+
+**Test:**
+```bash
+curl -X POST https://mockapi-proxy.onrender.com/hello/world \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Response:**
+```json
+{"message": "Hello World!"}
+```
+
+---
+
+### Example 2: Body Predicate Matching
+
+**Create in UI:**
+- **API Name**: `users/login`
+- **Request Body Matching**: `{"username": "admin"}`
+- **Response Body**: `{"token": "admin-token-123", "role": "admin"}`
+
+**Test (✅ Matches):**
+```bash
+curl -X POST https://mockapi-proxy.onrender.com/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "any"}'
+```
+
+**Response:**
+```json
+{"token": "admin-token-123", "role": "admin"}
+```
+
+**Test (❌ Doesn't Match):**
+```bash
+curl -X POST https://mockapi-proxy.onrender.com/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "guest"}'
+```
+
+---
+
+### Example 3: Header Predicate Matching
+
+**Create in UI:**
+- **API Name**: `secure/data`
+- **Request Headers Matching**: `{"authorization": "Bearer secret123"}`
+- **Response Body**: `{"data": "sensitive information"}`
+
+**Test (✅ Matches):**
+```bash
+curl -X POST https://mockapi-proxy.onrender.com/secure/data \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer secret123" \
+  -d '{}'
+```
+
+**Response:**
+```json
+{"data": "sensitive information"}
+```
+
+---
+
+### Example 4: Combined Body + Header Matching
+
+**Create in UI:**
+- **API Name**: `admin/action`
+- **Request Body Matching**: `{"action": "delete"}`
+- **Request Headers Matching**: `{"x-api-key": "admin-key"}`
+- **Response Body**: `{"status": "deleted"}`
+
+**Test (BOTH must match):**
+```bash
+curl -X POST https://mockapi-proxy.onrender.com/admin/action \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: admin-key" \
+  -d '{"action": "delete", "id": 123}'
+```
+
+**Response:**
+```json
+{"status": "deleted"}
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| Backend | Node.js + Express |
+| Database | MongoDB (Atlas in prod, local for dev) |
+| Service Virtualization | Mountebank |
+| Proxy | http-proxy |
+| Containerization | Docker + Docker Compose |
+| Deployment | Render.com |
+| Frontend | Vanilla JS (no framework!) |
+
+---
+
+## 🔧 API Endpoints
+
+### Mock Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/mocks` | List all mocks |
+| GET | `/api/mocks/:id` | Get single mock |
+| POST | `/api/saveOrUpdate` | Create or update mock |
+| DELETE | `/api/mocks/:id` | Delete mock |
+| POST | `/api/reloadAllImposters` | Reload all mocks into Mountebank |
+
+### Debug Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/debug/imposters` | Check Mountebank state |
+| POST | `/api/debug/testMock/:apiName` | Test direct Mountebank call |
+
+### Mock Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/mock/*` | Your mock API (via backend) |
+| POST | `/*` | Your mock API (via proxy) |
+
+---
+
+## 📂 Project Structure
+
+```
+stub-generator/
+├── server.js                      # Backend entry point
+├── routes/
+│   └── Api.js                     # Mock CRUD + Mountebank integration
+├── models/
+│   ├── ApiMock.js                 # Mock schema
+│   └── Counter.js                 # Auto-increment helper
+├── public/
+│   ├── index.html                 # Web UI
+│   ├── script.js                  # Frontend logic
+│   └── style.css                  # Styling
+├── ReverseProxy.js                # Original proxy
+├── ReverseProxy.simple.js         # Single imposter proxy
+├── ReverseProxy.render-combined.js # Production proxy
+├── Dockerfile                     # Node.js container
+├── Dockerfile.combined            # Backend + Mountebank
+├── docker-compose.yml             # Local development (standard)
+├── docker-compose.combined.yml    # Local development (matches prod)
+├── render.yaml                    # Render deployment config
+└── docs/
+    ├── LOCAL_SETUP.md             # Local development guide
+    ├── COMBINED_ARCHITECTURE.md   # Architecture details
+    └── DEPLOY_COMBINED.md         # Deployment guide
+```
+
+---
+
+## 🚀 Deployment
+
+### Deploy to Render
+
+1. **Fork this repository**
+
+2. **Create MongoDB Atlas cluster** (free tier)
+
+3. **Create Render services** from Blueprint:
+   - Connect GitHub repo
+   - Use `render.yaml`
+   - Set `MONGODB_URI` in backend environment variables
+
+4. **Set environment variable:**
+   - `MONGODB_URI`: Your MongoDB Atlas connection string
+   - `BACKEND_URL`: Backend public URL (for proxy)
+
+**📖 Full deployment guide:** [DEPLOY_COMBINED.md](./DEPLOY_COMBINED.md)
+
+---
+
+## 🧪 Local Development
 
 ### Prerequisites
+- Docker Desktop
+- Ports 3000, 8080, 27017, 2525 available
 
-- [Docker](https://docs.docker.com/get-docker/) installed and running
-- Docker Compose installed
+### Start Services
 
-### Steps
+```bash
+# Standard architecture (easier debugging)
+docker-compose up -d
 
-1. Clone the repository
-2. cd your-project-folder
-3. Build and start all containers (MongoDB, Mountebank, backend, proxy):docker-compose up --build
+# Combined architecture (matches production)
+docker-compose -f docker-compose.combined.yml up -d
+```
 
-### URLs
+### Access Points
 
-1. Access the UI at:  
-`http://localhost:3000`
+- **UI**: http://localhost:3000
+- **Mock API**: http://localhost:8080
+- **MongoDB**: mongodb://localhost:27017
+- **Mountebank**: http://localhost:2525 (standard only)
 
-2. Backend APIs run at:  
-`http://localhost:3000/api/...`  
+### View Logs
 
-3. Proxy listens on port 8080 for forwarded API requests:  
-`http://localhost:8080/<api-name>/...`
-
-
-## 5. Debugging Guidelines
-
-### Checking Logs
-
-- Show all service logs combined: docker-compose logs -f
-- Show logs for a specific service:
+```bash
+docker-compose logs -f
 docker-compose logs -f backend
-docker-compose logs -f proxy
-docker-compose logs -f mountebank
-docker-compose logs -f mongo
+```
 
+### Stop Services
 
-### Common Troubleshooting Steps
+```bash
+docker-compose down
+```
 
-- **Bad Gateway / 502 Errors:**  
-- Confirm `apiPortMap` includes both host (`mountebank`) and correct port.  
-- Check proxy code uses host and port correctly to forward requests.  
-- Verify Mountebank imposters exist on the ports (`http://localhost:2525/imposters`).
-
-- **Connection Refused Errors:**  
-- Confirm backend uses Docker service names (e.g., `proxy`, `mountebank`) instead of `localhost` or IPs when calling internal services.  
-- Confirm all relevant containers are running (`docker ps`) and healthy.
-
-- **API Not Found (404):**  
-- Check if the incoming API name exists in the proxy `apiPortMap`.  
-- Confirm the mock API was saved and backend pushed updated map to the proxy.
-
-- To test connectivity inside containers:
-docker exec -it <container_name> sh
-wget -qO- http://mountebank:4000
-
-
-- Restart services to refresh environment:
-docker-compose restart
-
+**📖 Full local setup guide:** [LOCAL_SETUP.md](./LOCAL_SETUP.md)
 
 ---
 
-## 6. Instructions to Add APIs and Manage Mocks
+## 🎯 Use Cases
 
-### Using the UI
+### 1. **Local Development**
+No need for VPN, staging servers, or real API access. Develop offline!
 
-1. Navigate to the UI at `http://localhost:3000`.
-2. Use the provided forms to create new mock API definitions including request predicates and stub responses.
-3. Upon saving, the backend will create an imposter in Mountebank and update the proxy routing map.
-4. Access your mocked API via `http://localhost:8080/<api-name>/...`.
+### 2. **CI/CD Testing**
+Consistent, reliable mock responses for automated tests.
 
-### Using API
+### 3. **Demos & POCs**
+Show features without backend dependencies or API keys.
 
-- Create or update mocks via backend API endpoints (`POST /api/mocks`).
-- Backend automatically creates imposters and updates routing.
-- Proxy routes incoming requests by API name in URL.
+### 4. **API Exploration**
+Test different scenarios and edge cases safely.
 
-### Workflow
+### 5. **Rate Limit Avoidance**
+Avoid hitting API rate limits during development.
 
-- Each API mock is assigned a unique port internally.
-- Requests made to proxy on port 8080 will be routed to the corresponding imposter automatically.
-- Mock responses will reflect the predicates and stubs defined in your mock.
+### 6. **Parallel Development**
+Frontend and backend teams work independently.
 
-### Tips
+---
 
-- Ensure API names in URLs match exactly those defined in the map.
-- Use `contains` predicates in mocks for flexible matching.
-- Use Mountebank admin UI (`http://localhost:2525`) for monitoring imposters directly if needed.
+## 🐛 Troubleshooting
 
+### Mock not matching?
 
+1. **Check mock exists:**
+   ```bash
+   curl https://mockapi-backend.onrender.com/api/mocks
+   ```
+
+2. **Check Mountebank state:**
+   ```bash
+   curl https://mockapi-backend.onrender.com/api/debug/imposters
+   ```
+
+3. **Test direct call:**
+   ```bash
+   curl -X POST https://mockapi-backend.onrender.com/api/debug/testMock/your-api-name \
+     -H "Content-Type: application/json" \
+     -d '{"test": "data"}'
+   ```
+
+4. **Check logs** in Render dashboard
+
+### Empty response?
+
+- Ensure headers are forwarded (especially Authorization, API keys)
+- Check predicate matches (body AND headers must all match)
+- Verify API name exactly matches the path you're calling
+
+### Local Docker issues?
+
+```bash
+# Rebuild everything
+docker-compose down -v
+docker-compose up -d --build
+
+# Check service health
+docker-compose ps
+docker-compose logs -f
+```
+
+---
+
+## 📖 Documentation
+
+- [LOCAL_SETUP.md](./LOCAL_SETUP.md) - Local development guide
+- [COMBINED_ARCHITECTURE.md](./COMBINED_ARCHITECTURE.md) - Architecture details
+- [DEPLOY_COMBINED.md](./DEPLOY_COMBINED.md) - Deployment guide
+- [INJECT_VS_IS.md](./INJECT_VS_IS.md) - Mountebank response types
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test locally with Docker Compose
+5. Submit a pull request
+
+---
+
+## 📝 License
+
+MIT License - feel free to use this in your projects!
+
+---
+
+## 🙏 Credits
+
+- **Mountebank** - Service virtualization tool
+- **MongoDB** - Database
+- **Render** - Hosting platform
+
+---
+
+## 📧 Support
+
+- **Issues**: [GitHub Issues](https://github.com/rismehta/stub/issues)
+- **Documentation**: See `/docs` folder
+- **Live Demo**: https://mockapi-backend.onrender.com
+
+---
+
+**Built with ❤️ for developers who need reliable mock APIs**
