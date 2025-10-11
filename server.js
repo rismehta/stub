@@ -23,15 +23,23 @@ app.use('/mock', async (req, res) => {
   console.log(`Forwarding mock request ${req.method} ${req.url} to ${targetUrl}`);
   
   try {
-    // Only forward safe headers, not host/connection/content-length
-    const forwardHeaders = {
-      'Content-Type': req.headers['content-type'] || 'application/json'
-    };
+    // Forward safe headers, excluding problematic ones
+    const skipHeaders = ['host', 'connection', 'content-length', 'transfer-encoding', 'upgrade'];
+    const forwardHeaders = {};
     
-    // Forward authorization if present
-    if (req.headers['authorization']) {
-      forwardHeaders['authorization'] = req.headers['authorization'];
+    Object.keys(req.headers).forEach(key => {
+      const lowerKey = key.toLowerCase();
+      if (!skipHeaders.includes(lowerKey)) {
+        forwardHeaders[key] = req.headers[key];
+      }
+    });
+    
+    // Ensure content-type is set
+    if (!forwardHeaders['content-type'] && !forwardHeaders['Content-Type']) {
+      forwardHeaders['Content-Type'] = 'application/json';
     }
+    
+    console.log('Forwarding headers:', Object.keys(forwardHeaders).join(', '));
     
     const response = await axios({
       method: req.method,

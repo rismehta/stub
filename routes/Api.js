@@ -42,6 +42,7 @@ function buildStubs(apiMocks) {
           } 
         });
       });
+      console.log(`Added header predicates for ${doc.apiName}:`, JSON.stringify(headersPred));
     }
 
     // Use simple 'is' response instead of injection for reliability
