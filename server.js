@@ -23,19 +23,35 @@ app.use('/mock', async (req, res) => {
   console.log(`Forwarding mock request ${req.method} ${req.url} to ${targetUrl}`);
   
   try {
+    // Only forward safe headers, not host/connection/content-length
+    const forwardHeaders = {
+      'Content-Type': req.headers['content-type'] || 'application/json'
+    };
+    
+    // Forward authorization if present
+    if (req.headers['authorization']) {
+      forwardHeaders['authorization'] = req.headers['authorization'];
+    }
+    
     const response = await axios({
       method: req.method,
       url: targetUrl,
-      data: req.body,
-      headers: {
-        'Content-Type': 'application/json',
-        ...req.headers
-      },
-      timeout: 10000
+      data: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+      headers: forwardHeaders,
+      timeout: 10000,
+      validateStatus: () => true // Accept any status code
     });
     
     console.log(`Received response from Mountebank: ${response.status}`);
-    res.status(response.status).json(response.data);
+    
+    // Forward response headers and body
+    Object.keys(response.headers).forEach(key => {
+      if (key !== 'transfer-encoding') {
+        res.setHeader(key, response.headers[key]);
+      }
+    });
+    
+    res.status(response.status).send(response.data);
   } catch (err) {
     console.error('Error forwarding to Mountebank:', err.message);
     if (err.response) {

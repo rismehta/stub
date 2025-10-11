@@ -3,49 +3,76 @@
 <head>
   <meta charset="UTF-8" />  
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mock API Creator</title>
+  <title>Mock API Manager</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <div class="container">
     <aside class="left-panel">
-      <h1 class="left-title">Mock API Creator</h1>
+      <h1 class="left-title">Mock API Manager</h1>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="create">Create Mock</button>
+        <button class="tab-btn" data-tab="manage">Manage Mocks</button>
+      </div>
     </aside>
+    
     <section class="right-panel">
-      <form id="mockApiForm" novalidate>
-        <label for="apiName">API Name (Path) <span class="required">*</span></label>
-        <input type="text" id="apiName" required placeholder="e.g., users, orders" />
+      <!-- CREATE/EDIT MOCK TAB -->
+      <div id="createTab" class="tab-content active">
+        <h2 id="formTitle">Create New Mock</h2>
+        <form id="mockApiForm" novalidate>
+          <input type="hidden" id="mockId" value="" />
+          
+          <label for="apiName">API Name (Path) <span class="required">*</span></label>
+          <input type="text" id="apiName" required placeholder="e.g., users, orders" />
 
-        <label for="predicateRequest">Request Body Matching Criteria (Optional)</label>
-        <span style="color: #888; font-size: 13px;">
-             <em>Input in valid Json format. The presence of keys should be exactly at the same nesting level in request payload.</em>
+          <label for="predicateRequest">Request Body Matching Criteria (Optional)
+            <span style="color: #888; font-size: 13px; display: block;">
+              <em>Match requests with specific JSON body content. Leave empty to match any body.</em>
             </span>
-            </label>
-        <textarea id="predicateRequest" placeholder='e.g., { "userType": "admin" }'></textarea>
+          </label>
+          <textarea id="predicateRequest" placeholder='e.g., { "userType": "admin" }'></textarea>
 
-       <label for="requestPayload">
-        Request Payload (Optional)
-            <span style="color: #888; font-size: 13px;">
-             <br>
-             <em>Input in valid Json format. If Request Body Matching Criteria is not provided, this value will be considered for request body matching.</em>
+          <label for="predicateHeaders">Request Headers Matching Criteria (Optional)
+            <span style="color: #888; font-size: 13px; display: block;">
+              <em>Match requests with specific headers. Example: { "authorization": "Bearer token" }</em>
             </span>
-            </label>
-        <textarea id="requestPayload" placeholder='e.g., { "id": 123 }'></textarea>
+          </label>
+          <textarea id="predicateHeaders" placeholder='e.g., { "authorization": "Bearer token123" }'></textarea>
 
-        <label for="responseHeaders">Response Headers JSON (optional)</label>
-        <textarea id="responseHeaders" placeholder='e.g., { "x-powered-by": "nodejs" }'></textarea>
-
-        <label for="responseBody">Response Body JSON <span class="required">*</span></label>
-        <span style="color: #888; font-size: 13px;">
-             <em>Input in valid Json format.</em>
+          <label for="requestPayload">Request Payload (Optional)
+            <span style="color: #888; font-size: 13px; display: block;">
+              <em>Fallback body matching if Body Criteria is not provided.</em>
             </span>
-            </label>
-        <textarea id="responseBody" required placeholder='e.g., { "status": "success" }'></textarea>
+          </label>
+          <textarea id="requestPayload" placeholder='e.g., { "id": 123 }'></textarea>
 
-        <button type="submit" id="submitBtn">Save Mock</button>
-        <div id="message" class="message"></div>
-      </form>
+          <label for="responseHeaders">Response Headers JSON (Optional)</label>
+          <textarea id="responseHeaders" placeholder='e.g., { "x-powered-by": "nodejs" }'></textarea>
+
+          <label for="responseBody">Response Body JSON <span class="required">*</span>
+            <span style="color: #888; font-size: 13px; display: block;">
+              <em>The JSON response to return when this mock matches.</em>
+            </span>
+          </label>
+          <textarea id="responseBody" required placeholder='e.g., { "status": "success" }'></textarea>
+
+          <div class="button-group">
+            <button type="submit" id="submitBtn">Save Mock</button>
+            <button type="button" id="cancelBtn" class="btn-secondary" style="display:none;">Cancel</button>
+          </div>
+          <div id="message" class="message"></div>
+        </form>
+      </div>
+
+      <!-- MANAGE MOCKS TAB -->
+      <div id="manageTab" class="tab-content">
+        <h2>Manage Mocks</h2>
+        <div id="mocksList">
+          <p class="loading">Loading mocks...</p>
+        </div>
+      </div>
     </section>
   </div>
 <script src="script.js"></script>

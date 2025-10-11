@@ -22,13 +22,26 @@ function buildStubs(apiMocks) {
     const requestPred =
       doc.predicate && Object.keys(doc.predicate.request || {}).length > 0
         ? doc.predicate.request
-        
         : doc.requestPayload && Object.keys(doc.requestPayload || {}).length > 0
         ? doc.requestPayload
         : null;
 
     if (requestPred) {
       predicates.push({ contains: { body: requestPred } });
+    }
+
+    // Optional: match on request headers if provided
+    const headersPred = doc.predicate?.headers || {};
+    if (Object.keys(headersPred).length > 0) {
+      Object.keys(headersPred).forEach(headerName => {
+        predicates.push({ 
+          equals: { 
+            headers: { 
+              [headerName.toLowerCase()]: headersPred[headerName] 
+            } 
+          } 
+        });
+      });
     }
 
     // Use simple 'is' response instead of injection for reliability
@@ -49,11 +62,6 @@ function buildStubs(apiMocks) {
         }
       ]
     };
-
-    // Debug log for first stub
-    if (doc.apiName === 'rish') {
-      console.log('Creating stub for rish:', JSON.stringify(stub, null, 2));
-    }
 
     return stub;
   });
@@ -95,20 +103,29 @@ router.post('/saveOrUpdate', async (req, res) => {
     }
 
     const predReq = predicate?.request || {};
+    const predHeaders = predicate?.headers || {};
 
-    let doc = await ApiMock.findOne({ apiName, 'predicate.request': predReq});
+    // Check if updating existing mock (by _id in request body)
+    const mockId = req.body._id || req.body.mockId;
+    let doc;
 
-    if (doc) {
-      // Update existing
+    if (mockId) {
+      // Update existing by ID
+      doc = await ApiMock.findById(mockId);
+      if (!doc) {
+        return res.status(404).json({ error: 'Mock not found' });
+      }
+      doc.apiName = apiName;
+      doc.predicate = { request: predReq, headers: predHeaders };
       doc.requestPayload = requestPayload || {};
       doc.responseHeaders = responseHeaders || {};
       doc.responseBody = responseBody;
       await doc.save();
     } else {
-      // Create new
+      // Create new mock
       doc = new ApiMock({
         apiName,
-        predicate: { request: predReq},
+        predicate: { request: predReq, headers: predHeaders },
         requestPayload: requestPayload || {},
         responseHeaders: responseHeaders || {},
         responseBody
@@ -121,9 +138,10 @@ router.post('/saveOrUpdate', async (req, res) => {
     await upsertImposter(allMocks);
 
     res.json({ 
-      message: 'Mock saved and imposter updated', 
+      message: mockId ? 'Mock updated and imposter reloaded' : 'Mock created and imposter updated',
       port: MB_IMPOSTER_PORT,
-      apiName: apiName 
+      apiName: apiName,
+      mockId: doc._id
     });
   } catch (err) {
     console.error(err);
@@ -193,6 +211,50 @@ router.post('/debug/testMock/:apiName', async (req, res) => {
       message: err.message,
       timeout: err.code === 'ECONNABORTED'
     });
+  }
+});
+
+// GET all mocks
+router.get('/mocks', async (req, res) => {
+  try {
+    const mocks = await ApiMock.find({}).sort({ apiName: 1, createdAt: -1 });
+    res.json(mocks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch mocks' });
+  }
+});
+
+// GET single mock by ID
+router.get('/mocks/:id', async (req, res) => {
+  try {
+    const mock = await ApiMock.findById(req.params.id);
+    if (!mock) {
+      return res.status(404).json({ error: 'Mock not found' });
+    }
+    res.json(mock);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch mock' });
+  }
+});
+
+// DELETE mock by ID
+router.delete('/mocks/:id', async (req, res) => {
+  try {
+    const mock = await ApiMock.findByIdAndDelete(req.params.id);
+    if (!mock) {
+      return res.status(404).json({ error: 'Mock not found' });
+    }
+    
+    // Reload all remaining mocks into imposter
+    const allMocks = await ApiMock.find({});
+    await upsertImposter(allMocks);
+    
+    res.json({ message: 'Mock deleted and imposter updated', apiName: mock.apiName });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to delete mock' });
   }
 });
 
