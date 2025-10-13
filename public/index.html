@@ -14,6 +14,7 @@
       <div class="tabs">
         <button class="tab-btn active" data-tab="create">Create Mock</button>
         <button class="tab-btn" data-tab="manage">Manage Mocks</button>
+        <button class="tab-btn" data-tab="import">Import</button>
       </div>
     </aside>
     
@@ -24,8 +25,11 @@
         <form id="mockApiForm" novalidate>
           <input type="hidden" id="mockId" value="" />
           
-          <label for="apiName">API Name (Path) <span class="required">*</span></label>
-          <input type="text" id="apiName" required placeholder="e.g., users, orders" />
+          <label for="businessName">Business Name / Description (Optional)</label>
+          <input type="text" id="businessName" placeholder="e.g., Admin User Login" />
+          
+          <label for="apiName">API Path <span class="required">*</span></label>
+          <input type="text" id="apiName" required placeholder="e.g., users/login" />
 
           <label for="predicateRequest">Request Body Matching Criteria (Optional)
             <span style="color: #888; font-size: 13px; display: block;">
@@ -73,8 +77,50 @@
           <p class="loading">Loading mocks...</p>
         </div>
       </div>
+
+      <!-- IMPORT TAB -->
+      <div id="importTab" class="tab-content">
+        <h2>📥 Import Mocks from Excel/CSV</h2>
+        
+        <div class="import-instructions">
+          <p><strong>Supported formats:</strong> .xlsx, .csv</p>
+          <p><strong>Required columns</strong> (flexible names accepted):</p>
+          <ul>
+            <li><strong>Business Name</strong> - Description or name of the API (optional)</li>
+            <li><strong>Path/Endpoint</strong> - API path like /users/login</li>
+            <li><strong>Request</strong> - Request body JSON (leave empty for any request)</li>
+            <li><strong>Response</strong> - Response body JSON</li>
+          </ul>
+        </div>
+
+        <div class="import-upload">
+          <input type="file" id="importFile" accept=".csv,.xlsx,.xls" style="display:none;" />
+          <div class="file-drop-zone" id="fileDropZone">
+            <p>📎 Drop file here or click to browse</p>
+            <button type="button" class="btn-upload" onclick="document.getElementById('importFile').click()">Choose File</button>
+          </div>
+        </div>
+
+        <div class="import-templates">
+          <button type="button" class="btn-template" id="downloadCsvTemplate">Download CSV Template</button>
+          <button type="button" class="btn-template" id="downloadXlsxTemplate">Download XLSX Template</button>
+        </div>
+
+        <div id="importPreview" class="import-preview" style="display:none;">
+          <h3>Preview</h3>
+          <div id="importPreviewContent"></div>
+          <div class="import-actions">
+            <button type="button" id="cancelImport" class="btn-secondary">Cancel</button>
+            <button type="button" id="importSelected" class="btn-primary">Import Selected</button>
+          </div>
+        </div>
+
+        <div id="importMessage" class="message"></div>
+      </div>
     </section>
   </div>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

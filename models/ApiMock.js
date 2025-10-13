@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const ApiMockSchema = new mongoose.Schema({
+  businessName: { type: String, default: '' },
   apiName: { type: String, required: true },
   predicate: {
     request: { type: mongoose.Schema.Types.Mixed, default: {} },

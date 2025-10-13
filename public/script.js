@@ -67,6 +67,7 @@ form.addEventListener('submit', async (e) => {
   messageDiv.textContent = '';
   messageDiv.className = 'message';
 
+  const businessName = document.getElementById('businessName').value.trim();
   const apiName = document.getElementById('apiName').value.trim();
   const predicateRequestText = document.getElementById('predicateRequest').value.trim();
   const predicateHeadersText = document.getElementById('predicateHeaders').value.trim();
@@ -102,6 +103,7 @@ form.addEventListener('submit', async (e) => {
   submitBtn.textContent = currentEditId ? 'Updating...' : 'Saving...';
 
   const payload = {
+    businessName,
     apiName,
     predicate: {
       request: predicateRequest,
@@ -204,9 +206,12 @@ async function loadMocks() {
         if (hasHeaderPred) predicateInfo.push('Header Match');
         const predicateStr = predicateInfo.length > 0 ? predicateInfo.join(' + ') : 'Any Request';
         
+        const businessName = mock.businessName ? `<span class="stub-business-name">${mock.businessName}</span>` : '';
+        
         html += `
           <div class="stub-item">
             <div class="stub-info">
+              ${businessName}
               <span class="stub-predicate">${predicateStr}</span>
               <span class="stub-response">${JSON.stringify(mock.responseBody).substring(0, 50)}...</span>
             </div>
@@ -246,6 +251,7 @@ window.editMock = async function(id) {
     
     // Fill form
     document.getElementById('mockId').value = mock._id;
+    document.getElementById('businessName').value = mock.businessName || '';
     document.getElementById('apiName').value = mock.apiName;
     document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
@@ -282,6 +288,7 @@ window.cloneMock = async function(id) {
     
     // Fill form WITHOUT setting mockId (so it creates new)
     document.getElementById('mockId').value = '';
+    document.getElementById('businessName').value = mock.businessName || '';
     document.getElementById('apiName').value = mock.apiName;
     document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
@@ -335,3 +342,389 @@ window.deleteMock = async function(id, apiName) {
     alert('❌ Error deleting mock: ' + err.message);
   }
 };
+
+// ============================================================================
+// IMPORT FUNCTIONALITY
+// ============================================================================
+
+const importFile = document.getElementById('importFile');
+const fileDropZone = document.getElementById('fileDropZone');
+const importPreview = document.getElementById('importPreview');
+const importPreviewContent = document.getElementById('importPreviewContent');
+const importMessage = document.getElementById('importMessage');
+const cancelImport = document.getElementById('cancelImport');
+const importSelected = document.getElementById('importSelected');
+
+let parsedImportData = [];
+let selectedImports = [];
+
+// Column name patterns for flexible matching
+const COLUMN_PATTERNS = {
+  businessName: ['name', 'business name', 'api name', 'description', 'label', 'title'],
+  path: ['path', 'api path', 'endpoint', 'url', 'route', 'api', 'uri'],
+  request: ['request', 'request body', 'request payload', 'req body', 'request json', 'input', 'req'],
+  response: ['response', 'response body', 'response payload', 'res body', 'response json', 'output', 'res'],
+  headers: ['headers', 'request headers', 'header', 'http headers']
+};
+
+function detectColumn(headerName) {
+  const normalized = headerName.toLowerCase().trim();
+  for (const [field, patterns] of Object.entries(COLUMN_PATTERNS)) {
+    for (const pattern of patterns) {
+      if (normalized.includes(pattern) || pattern.includes(normalized)) {
+        return field;
+      }
+    }
+  }
+  return null;
+}
+
+function parseJSONSafe(text) {
+  if (!text || text.trim() === '' || text.trim() === '{}') return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+// File upload handling
+importFile.addEventListener('change', handleFileUpload);
+
+fileDropZone.addEventListener('click', () => {
+  importFile.click();
+});
+
+fileDropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  fileDropZone.style.borderColor = '#bc6c25';
+  fileDropZone.style.background = '#f6f0e2';
+});
+
+fileDropZone.addEventListener('dragleave', () => {
+  fileDropZone.style.borderColor = '#a67c52';
+  fileDropZone.style.background = '#fffbf3';
+});
+
+fileDropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  fileDropZone.style.borderColor = '#a67c52';
+  fileDropZone.style.background = '#fffbf3';
+  
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    importFile.files = files;
+    handleFileUpload({ target: { files } });
+  }
+});
+
+async function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  importMessage.textContent = 'Parsing file...';
+  importMessage.className = 'message';
+  
+  try {
+    const extension = file.name.split('.').pop().toLowerCase();
+    let data;
+    
+    if (extension === 'csv') {
+      data = await parseCSV(file);
+    } else if (extension === 'xlsx' || extension === 'xls') {
+      data = await parseExcel(file);
+    } else {
+      throw new Error('Unsupported file format. Use .csv or .xlsx');
+    }
+    
+    parsedImportData = data;
+    selectedImports = data.map((_, i) => i); // Select all by default
+    displayImportPreview();
+    importMessage.textContent = '';
+    
+  } catch (err) {
+    importMessage.textContent = '❌ Error: ' + err.message;
+    importMessage.className = 'message error';
+  }
+}
+
+async function parseCSV(file) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        try {
+          const parsed = parseRows(results.data);
+          resolve(parsed);
+        } catch (err) {
+          reject(err);
+        }
+      },
+      error: (error) => {
+        reject(error);
+      }
+    });
+  });
+}
+
+async function parseExcel(file) {
+  const data = await file.arrayBuffer();
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const jsonData = XLSX.utils.sheet_to_json(sheet);
+  return parseRows(jsonData);
+}
+
+function parseRows(rows) {
+  if (rows.length === 0) {
+    throw new Error('File is empty');
+  }
+  
+  // Detect column mappings
+  const headers = Object.keys(rows[0]);
+  const mapping = {};
+  
+  headers.forEach(header => {
+    const field = detectColumn(header);
+    if (field) {
+      mapping[header] = field;
+    }
+  });
+  
+  console.log('Detected columns:', mapping);
+  
+  if (!mapping || Object.keys(mapping).length === 0) {
+    throw new Error('Could not detect required columns. Please use column names like: Name, Path, Request, Response');
+  }
+  
+  // Check for required columns
+  const hasPath = Object.values(mapping).includes('path');
+  const hasResponse = Object.values(mapping).includes('response');
+  
+  if (!hasPath) {
+    throw new Error('Required column "Path" not found');
+  }
+  if (!hasResponse) {
+    throw new Error('Required column "Response" not found');
+  }
+  
+  // Transform rows
+  return rows.map((row, index) => {
+    const transformed = {
+      businessName: '',
+      path: '',
+      request: {},
+      response: {},
+      headers: {},
+      errors: [],
+      rowIndex: index + 2 // +2 because Excel rows start at 1 and we have headers
+    };
+    
+    for (const [header, field] of Object.entries(mapping)) {
+      const value = row[header];
+      
+      if (field === 'request' || field === 'response' || field === 'headers') {
+        if (value && value.trim() !== '') {
+          const parsed = parseJSONSafe(value);
+          if (parsed === null) {
+            transformed.errors.push(`Invalid JSON in ${field}`);
+          } else {
+            transformed[field] = parsed;
+          }
+        }
+      } else {
+        transformed[field] = value || '';
+      }
+    }
+    
+    // Validation
+    if (!transformed.path || transformed.path.trim() === '') {
+      transformed.errors.push('Path is required');
+    }
+    if (!transformed.response || Object.keys(transformed.response).length === 0) {
+      transformed.errors.push('Response is required');
+    }
+    
+    transformed.valid = transformed.errors.length === 0;
+    return transformed;
+  });
+}
+
+function displayImportPreview() {
+  const validCount = parsedImportData.filter(d => d.valid).length;
+  const invalidCount = parsedImportData.length - validCount;
+  
+  let html = `
+    <div class="import-summary">
+      <p><strong>${parsedImportData.length} APIs found</strong></p>
+      <p>✅ ${validCount} valid | ${invalidCount > 0 ? `⚠️ ${invalidCount} invalid` : ''}</p>
+      <label>
+        <input type="checkbox" id="selectAllImport" ${selectedImports.length === parsedImportData.length ? 'checked' : ''}> 
+        Select All Valid
+      </label>
+    </div>
+    <div class="import-list">
+  `;
+  
+  parsedImportData.forEach((item, index) => {
+    const isSelected = selectedImports.includes(index);
+    const displayPath = item.path.startsWith('/') ? item.path : `/${item.path}`;
+    
+    html += `
+      <div class="import-item ${item.valid ? '' : 'import-item-invalid'}">
+        <div class="import-item-header">
+          <label>
+            <input type="checkbox" 
+                   class="import-checkbox" 
+                   data-index="${index}" 
+                   ${isSelected && item.valid ? 'checked' : ''} 
+                   ${!item.valid ? 'disabled' : ''}>
+            ${item.businessName ? `<strong>${item.businessName}</strong>` : displayPath}
+          </label>
+          ${!item.valid ? '<span class="import-error">❌ Invalid</span>' : ''}
+        </div>
+        <div class="import-item-details">
+          <div><strong>Path:</strong> ${displayPath}</div>
+          ${item.businessName ? `<div><strong>Name:</strong> ${item.businessName}</div>` : ''}
+          <div><strong>Predicate:</strong> ${Object.keys(item.request).length > 0 ? JSON.stringify(item.request).substring(0, 50) + '...' : 'Any Request'}</div>
+          <div><strong>Response:</strong> ${JSON.stringify(item.response).substring(0, 50)}...</div>
+          ${item.errors.length > 0 ? `<div class="import-errors">Errors: ${item.errors.join(', ')}</div>` : ''}
+        </div>
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  
+  importPreviewContent.innerHTML = html;
+  importPreview.style.display = 'block';
+  
+  // Add event listeners
+  document.getElementById('selectAllImport').addEventListener('change', (e) => {
+    if (e.target.checked) {
+      selectedImports = parsedImportData.map((item, i) => item.valid ? i : null).filter(i => i !== null);
+    } else {
+      selectedImports = [];
+    }
+    displayImportPreview();
+  });
+  
+  document.querySelectorAll('.import-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      const index = parseInt(e.target.dataset.index);
+      if (e.target.checked) {
+        if (!selectedImports.includes(index)) {
+          selectedImports.push(index);
+        }
+      } else {
+        selectedImports = selectedImports.filter(i => i !== index);
+      }
+    });
+  });
+}
+
+cancelImport.addEventListener('click', () => {
+  importPreview.style.display = 'none';
+  parsedImportData = [];
+  selectedImports = [];
+  importFile.value = '';
+  importMessage.textContent = '';
+});
+
+importSelected.addEventListener('click', async () => {
+  if (selectedImports.length === 0) {
+    alert('Please select at least one mock to import');
+    return;
+  }
+  
+  importSelected.disabled = true;
+  importSelected.textContent = 'Importing...';
+  importMessage.textContent = 'Importing mocks...';
+  importMessage.className = 'message';
+  
+  try {
+    const mocksToImport = selectedImports.map(index => {
+      const item = parsedImportData[index];
+      return {
+        businessName: item.businessName || '',
+        apiName: item.path.startsWith('/') ? item.path.substring(1) : item.path,
+        predicate: {
+          request: item.request || {},
+          headers: item.headers || {}
+        },
+        requestPayload: {},
+        responseHeaders: {},
+        responseBody: item.response
+      };
+    });
+    
+    const resp = await fetch('/api/import/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mocks: mocksToImport })
+    });
+    
+    const data = await resp.json();
+    
+    if (resp.ok) {
+      const successCount = data.results.filter(r => r.success).length;
+      const failCount = data.results.length - successCount;
+      
+      importMessage.textContent = `✅ Success! ${successCount} mocks imported${failCount > 0 ? `, ${failCount} failed` : ''}`;
+      importMessage.className = 'message success';
+      
+      // Reset
+      importPreview.style.display = 'none';
+      parsedImportData = [];
+      selectedImports = [];
+      importFile.value = '';
+      
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        importMessage.textContent = '';
+        importMessage.className = 'message';
+      }, 3000);
+    } else {
+      importMessage.textContent = '❌ ' + (data.error || 'Import failed');
+      importMessage.className = 'message error';
+    }
+  } catch (err) {
+    importMessage.textContent = '❌ Error: ' + err.message;
+    importMessage.className = 'message error';
+  } finally {
+    importSelected.disabled = false;
+    importSelected.textContent = 'Import Selected';
+  }
+});
+
+// Template downloads
+document.getElementById('downloadCsvTemplate').addEventListener('click', () => {
+  const csv = `Business Name,API Path,Request Body,Response Body
+Admin User Login,/users/login,"{""username"":""admin""}","{""token"":""admin-123"",""role"":""admin""}"
+Guest User Login,/users/login,"{""username"":""guest""}","{""token"":""guest-456"",""role"":""guest""}"
+Get User Profile,/users/profile,"{}","{""name"":""John Doe"",""email"":""john@example.com""}"`;
+  
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'mock-import-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('downloadXlsxTemplate').addEventListener('click', () => {
+  const data = [
+    ['Business Name', 'API Path', 'Request Body', 'Response Body'],
+    ['Admin User Login', '/users/login', '{"username":"admin"}', '{"token":"admin-123","role":"admin"}'],
+    ['Guest User Login', '/users/login', '{"username":"guest"}', '{"token":"guest-456","role":"guest"}'],
+    ['Get User Profile', '/users/profile', '{}', '{"name":"John Doe","email":"john@example.com"}']
+  ];
+  
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Mocks');
+  XLSX.writeFile(wb, 'mock-import-template.xlsx');
+});

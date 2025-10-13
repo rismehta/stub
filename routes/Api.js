@@ -259,4 +259,66 @@ router.delete('/mocks/:id', async (req, res) => {
   }
 });
 
+// Batch import endpoint
+router.post('/import/batch', async (req, res) => {
+  try {
+    const { mocks } = req.body;
+    
+    if (!Array.isArray(mocks) || mocks.length === 0) {
+      return res.status(400).json({ error: 'Mocks array is required' });
+    }
+    
+    const results = [];
+    
+    for (const mockData of mocks) {
+      try {
+        // Validate required fields
+        if (!mockData.apiName || !mockData.responseBody) {
+          results.push({ 
+            success: false, 
+            apiName: mockData.apiName || 'unknown',
+            error: 'apiName and responseBody are required' 
+          });
+          continue;
+        }
+        
+        // Create new mock
+        const doc = new ApiMock({
+          businessName: mockData.businessName || '',
+          apiName: mockData.apiName,
+          predicate: {
+            request: mockData.predicate?.request || {},
+            headers: mockData.predicate?.headers || {}
+          },
+          requestPayload: mockData.requestPayload || {},
+          responseHeaders: mockData.responseHeaders || {},
+          responseBody: mockData.responseBody
+        });
+        
+        await doc.save();
+        results.push({ success: true, apiName: mockData.apiName, mockId: doc._id });
+      } catch (err) {
+        results.push({ 
+          success: false, 
+          apiName: mockData.apiName || 'unknown',
+          error: err.message 
+        });
+      }
+    }
+    
+    // Reload all mocks into imposter
+    try {
+      const allMocks = await ApiMock.find({});
+      await upsertImposter(allMocks);
+    } catch (err) {
+      console.error('Error reloading imposter after batch import:', err);
+    }
+    
+    res.json({ results });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 module.exports = router;
