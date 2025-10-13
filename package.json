@@ -16,8 +16,6 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "http-proxy": "^1.18.1",
-    "mongoose": "^8.18.0",
-    "papaparse": "^5.4.1",
-    "xlsx": "^0.18.5"
+    "mongoose": "^8.18.0"
   }
 }
