@@ -107,7 +107,7 @@ async function upsertImposter(apiMocks) {
 // Save or update mock route
 router.post('/saveOrUpdate', async (req, res) => {
   try {
-    const { apiName, predicate, requestPayload, responseHeaders, responseBody } = req.body;
+    const { businessName, apiName, method, predicate, requestPayload, responseHeaders, responseBody } = req.body;
 
     if (!apiName || !responseBody) {
       return res.status(400).json({ error: 'apiName and responseBody are required' });
@@ -115,6 +115,7 @@ router.post('/saveOrUpdate', async (req, res) => {
 
     const predReq = predicate?.request || {};
     const predHeaders = predicate?.headers || {};
+    const predQuery = predicate?.query || {};
 
     // Check if updating existing mock (by _id in request body)
     const mockId = req.body._id || req.body.mockId;
@@ -126,8 +127,10 @@ router.post('/saveOrUpdate', async (req, res) => {
       if (!doc) {
         return res.status(404).json({ error: 'Mock not found' });
       }
+      doc.businessName = businessName || '';
       doc.apiName = apiName;
-      doc.predicate = { request: predReq, headers: predHeaders };
+      doc.method = method || 'POST';
+      doc.predicate = { request: predReq, headers: predHeaders, query: predQuery };
       doc.requestPayload = requestPayload || {};
       doc.responseHeaders = responseHeaders || {};
       doc.responseBody = responseBody;
@@ -135,8 +138,10 @@ router.post('/saveOrUpdate', async (req, res) => {
     } else {
       // Create new mock
       doc = new ApiMock({
+        businessName: businessName || '',
         apiName,
-        predicate: { request: predReq, headers: predHeaders },
+        method: method || 'POST',
+        predicate: { request: predReq, headers: predHeaders, query: predQuery },
         requestPayload: requestPayload || {},
         responseHeaders: responseHeaders || {},
         responseBody
