@@ -16,7 +16,10 @@ function buildStubs(apiMocks) {
 
     // Match based on path containing the API name (primary predicate)
     predicates.push({ contains: { path: `/${doc.apiName}` } });
-    predicates.push({ equals: { method: 'POST' } });
+    
+    // Match on HTTP method (default to POST if not specified)
+    const method = doc.method || 'POST';
+    predicates.push({ equals: { method: method } });
     
     // Optional: match on request body if provided
     const requestPred =
@@ -43,6 +46,13 @@ function buildStubs(apiMocks) {
         });
       });
       console.log(`Added header predicates for ${doc.apiName}:`, JSON.stringify(headersPred));
+    }
+
+    // Optional: match on query parameters if provided
+    const queryPred = doc.predicate?.query || {};
+    if (Object.keys(queryPred).length > 0) {
+      predicates.push({ equals: { query: queryPred } });
+      console.log(`Added query predicates for ${doc.apiName}:`, JSON.stringify(queryPred));
     }
 
     // Use simple 'is' response instead of injection for reliability
@@ -286,9 +296,11 @@ router.post('/import/batch', async (req, res) => {
         const doc = new ApiMock({
           businessName: mockData.businessName || '',
           apiName: mockData.apiName,
+          method: mockData.method || 'POST',
           predicate: {
             request: mockData.predicate?.request || {},
-            headers: mockData.predicate?.headers || {}
+            headers: mockData.predicate?.headers || {},
+            query: mockData.predicate?.query || {}
           },
           requestPayload: mockData.requestPayload || {},
           responseHeaders: mockData.responseHeaders || {},

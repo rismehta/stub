@@ -658,3 +658,35 @@ button#submitBtn:disabled {
   font-weight: 700;
   margin-bottom: 0.25rem;
 }
+
+.stub-method {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  margin-right: 0.5rem;
+  background: #2563eb;
+  color: white;
+  text-transform: uppercase;
+}
+
+.stub-method[data-method="GET"] {
+  background: #16a34a;
+}
+
+.stub-method[data-method="POST"] {
+  background: #2563eb;
+}
+
+.stub-method[data-method="PUT"] {
+  background: #ea580c;
+}
+
+.stub-method[data-method="DELETE"] {
+  background: #dc2626;
+}
+
+.stub-method[data-method="PATCH"] {
+  background: #7c3aed;
+}

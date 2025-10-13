@@ -69,8 +69,10 @@ form.addEventListener('submit', async (e) => {
 
   const businessName = document.getElementById('businessName').value.trim();
   const apiName = document.getElementById('apiName').value.trim();
+  const method = document.getElementById('method').value || 'POST';
   const predicateRequestText = document.getElementById('predicateRequest').value.trim();
   const predicateHeadersText = document.getElementById('predicateHeaders').value.trim();
+  const predicateQueryText = document.getElementById('predicateQuery').value.trim();
   const requestPayloadText = document.getElementById('requestPayload').value.trim();
   const responseHeadersText = document.getElementById('responseHeaders').value.trim();
   const responseBodyText = document.getElementById('responseBody').value.trim();
@@ -84,6 +86,9 @@ form.addEventListener('submit', async (e) => {
 
   const predicateHeaders = parseJSONSafe(predicateHeadersText);
   if (predicateHeaders === null) return showError('Invalid Request Headers Criteria JSON');
+
+  const predicateQuery = parseJSONSafe(predicateQueryText);
+  if (predicateQuery === null) return showError('Invalid Query Parameters Criteria JSON');
 
   const requestPayload = parseJSONSafe(requestPayloadText);
   if (requestPayload === null) return showError('Invalid Request Payload JSON');
@@ -105,9 +110,11 @@ form.addEventListener('submit', async (e) => {
   const payload = {
     businessName,
     apiName,
+    method,
     predicate: {
       request: predicateRequest,
-      headers: predicateHeaders
+      headers: predicateHeaders,
+      query: predicateQuery
     },
     requestPayload,
     responseHeaders,
@@ -201,17 +208,21 @@ async function loadMocks() {
       apiMocks.forEach(mock => {
         const hasBodyPred = mock.predicate?.request && Object.keys(mock.predicate.request).length > 0;
         const hasHeaderPred = mock.predicate?.headers && Object.keys(mock.predicate.headers).length > 0;
+        const hasQueryPred = mock.predicate?.query && Object.keys(mock.predicate.query).length > 0;
         const predicateInfo = [];
         if (hasBodyPred) predicateInfo.push('Body Match');
         if (hasHeaderPred) predicateInfo.push('Header Match');
+        if (hasQueryPred) predicateInfo.push('Query Match');
         const predicateStr = predicateInfo.length > 0 ? predicateInfo.join(' + ') : 'Any Request';
         
+        const method = mock.method || 'POST';
         const businessName = mock.businessName ? `<span class="stub-business-name">${mock.businessName}</span>` : '';
         
         html += `
           <div class="stub-item">
             <div class="stub-info">
               ${businessName}
+              <span class="stub-method">${method}</span>
               <span class="stub-predicate">${predicateStr}</span>
               <span class="stub-response">${JSON.stringify(mock.responseBody).substring(0, 50)}...</span>
             </div>
@@ -253,8 +264,10 @@ window.editMock = async function(id) {
     document.getElementById('mockId').value = mock._id;
     document.getElementById('businessName').value = mock.businessName || '';
     document.getElementById('apiName').value = mock.apiName;
+    document.getElementById('method').value = mock.method || 'POST';
     document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
+    document.getElementById('predicateQuery').value = JSON.stringify(mock.predicate?.query || {}, null, 2);
     document.getElementById('requestPayload').value = JSON.stringify(mock.requestPayload || {}, null, 2);
     document.getElementById('responseHeaders').value = JSON.stringify(mock.responseHeaders || {}, null, 2);
     document.getElementById('responseBody').value = JSON.stringify(mock.responseBody || {}, null, 2);
@@ -290,8 +303,10 @@ window.cloneMock = async function(id) {
     document.getElementById('mockId').value = '';
     document.getElementById('businessName').value = mock.businessName || '';
     document.getElementById('apiName').value = mock.apiName;
+    document.getElementById('method').value = mock.method || 'POST';
     document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
+    document.getElementById('predicateQuery').value = JSON.stringify(mock.predicate?.query || {}, null, 2);
     document.getElementById('requestPayload').value = JSON.stringify(mock.requestPayload || {}, null, 2);
     document.getElementById('responseHeaders').value = JSON.stringify(mock.responseHeaders || {}, null, 2);
     document.getElementById('responseBody').value = JSON.stringify(mock.responseBody || {}, null, 2);
@@ -362,9 +377,11 @@ let selectedImports = [];
 const COLUMN_PATTERNS = {
   businessName: ['name', 'business name', 'api name', 'description', 'label', 'title'],
   path: ['path', 'api path', 'endpoint', 'url', 'route', 'api', 'uri'],
+  method: ['method', 'http method', 'verb', 'http verb'],
   request: ['request', 'request body', 'request payload', 'req body', 'request json', 'input', 'req'],
   response: ['response', 'response body', 'response payload', 'res body', 'response json', 'output', 'res'],
-  headers: ['headers', 'request headers', 'header', 'http headers']
+  headers: ['headers', 'request headers', 'header', 'http headers'],
+  query: ['query', 'query params', 'query parameters', 'query string', 'url params']
 };
 
 function detectColumn(headerName) {
@@ -515,9 +532,11 @@ function parseRows(rows) {
     const transformed = {
       businessName: '',
       path: '',
+      method: 'POST',
       request: {},
       response: {},
       headers: {},
+      query: {},
       errors: [],
       rowIndex: index + 2 // +2 because Excel rows start at 1 and we have headers
     };
@@ -525,7 +544,7 @@ function parseRows(rows) {
     for (const [header, field] of Object.entries(mapping)) {
       const value = row[header];
       
-      if (field === 'request' || field === 'response' || field === 'headers') {
+      if (field === 'request' || field === 'response' || field === 'headers' || field === 'query') {
         if (value && value.trim() !== '') {
           const parsed = parseJSONSafe(value);
           if (parsed === null) {
@@ -533,6 +552,14 @@ function parseRows(rows) {
           } else {
             transformed[field] = parsed;
           }
+        }
+      } else if (field === 'method') {
+        // Normalize method to uppercase
+        const methodValue = (value || 'POST').toString().trim().toUpperCase();
+        if (['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(methodValue)) {
+          transformed.method = methodValue;
+        } else {
+          transformed.method = 'POST'; // Default
         }
       } else {
         transformed[field] = value || '';
@@ -650,9 +677,11 @@ importSelected.addEventListener('click', async () => {
       return {
         businessName: item.businessName || '',
         apiName: item.path.startsWith('/') ? item.path.substring(1) : item.path,
+        method: item.method || 'POST',
         predicate: {
           request: item.request || {},
-          headers: item.headers || {}
+          headers: item.headers || {},
+          query: item.query || {}
         },
         requestPayload: {},
         responseHeaders: {},
