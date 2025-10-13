@@ -586,7 +586,7 @@ function displayImportPreview() {
   let html = `
     <div class="import-summary">
       <p><strong>${parsedImportData.length} APIs found</strong></p>
-      <p>✅ ${validCount} valid | ${invalidCount > 0 ? `⚠️ ${invalidCount} invalid` : ''}</p>
+      <p>${validCount} valid | ${invalidCount > 0 ? `⚠️ ${invalidCount} invalid` : ''}</p>
       <label>
         <input type="checkbox" id="selectAllImport" ${selectedImports.length === parsedImportData.length ? 'checked' : ''}> 
         Select All Valid
