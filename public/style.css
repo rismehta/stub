@@ -271,10 +271,25 @@ button#submitBtn:disabled {
   border-bottom: 2px solid #a67c52;
 }
 
+.mock-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
 .mock-header h3 {
   color: #6d4c41;
   font-size: 1.3rem;
   font-family: monospace;
+  margin: 0;
+}
+
+.mock-url {
+  color: #2563eb;
+  font-size: 0.9rem;
+  font-family: monospace;
+  font-weight: 600;
+  opacity: 0.8;
 }
 
 .mock-count {

@@ -184,10 +184,13 @@ async function loadMocks() {
     
     Object.keys(grouped).sort().forEach(apiName => {
       const apiMocks = grouped[apiName];
+      // Ensure path starts with single slash
+      const displayPath = apiName.startsWith('/') ? apiName : `/${apiName}`;
+      
       html += `
         <div class="mock-card">
           <div class="mock-header">
-            <h3>/mock/${apiName}</h3>
+            <h3>${displayPath}</h3>
             <span class="mock-count">${apiMocks.length} stub${apiMocks.length > 1 ? 's' : ''}</span>
           </div>
           <div class="mock-stubs">
