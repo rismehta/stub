@@ -20,7 +20,11 @@ app.use('/api', apiRoutes);
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 app.use('/mock', async (req, res) => {
   const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url}`;
-  console.log(`Forwarding mock request ${req.method} ${req.url} to ${targetUrl}`);
+  
+  console.log('\n========== INCOMING MOCK REQUEST ==========');
+  console.log(`Method: ${req.method}`);
+  console.log(`Path: ${req.url}`);
+  console.log(`Query Params:`, req.query && Object.keys(req.query).length > 0 ? JSON.stringify(req.query) : 'None');
   
   try {
     // Forward safe headers, excluding problematic ones
@@ -39,7 +43,26 @@ app.use('/mock', async (req, res) => {
       forwardHeaders['Content-Type'] = 'application/json';
     }
     
-    console.log('Forwarding headers:', Object.keys(forwardHeaders).join(', '));
+    // Log headers (mask sensitive ones)
+    console.log('Headers:');
+    Object.keys(forwardHeaders).forEach(key => {
+      const lowerKey = key.toLowerCase();
+      let value = forwardHeaders[key];
+      // Mask sensitive headers
+      if (lowerKey.includes('auth') || lowerKey.includes('token') || lowerKey.includes('key')) {
+        value = value ? `${value.substring(0, 10)}...` : value;
+      }
+      console.log(`  ${key}: ${value}`);
+    });
+    
+    // Log request body
+    if (req.body && Object.keys(req.body).length > 0) {
+      console.log('Request Body:', JSON.stringify(req.body, null, 2));
+    } else {
+      console.log('Request Body: None');
+    }
+    
+    console.log(`Forwarding to Mountebank: ${targetUrl}`);
     
     const response = await axios({
       method: req.method,
@@ -50,7 +73,12 @@ app.use('/mock', async (req, res) => {
       validateStatus: () => true // Accept any status code
     });
     
-    console.log(`Received response from Mountebank: ${response.status}`);
+    console.log('\n========== MOUNTEBANK RESPONSE ==========');
+    console.log(`Status: ${response.status}`);
+    console.log('Response Body:', typeof response.data === 'object' 
+      ? JSON.stringify(response.data, null, 2) 
+      : response.data);
+    console.log('===========================================\n');
     
     // Forward response headers and body
     Object.keys(response.headers).forEach(key => {
