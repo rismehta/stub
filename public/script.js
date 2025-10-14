@@ -218,13 +218,18 @@ async function loadMocks() {
         const method = mock.method || 'POST';
         const businessName = mock.businessName ? `<span class="stub-business-name">${mock.businessName}</span>` : '';
         
+        // Handle responseBody safely (could be undefined, null, or empty object)
+        const responsePreview = mock.responseBody 
+          ? JSON.stringify(mock.responseBody).substring(0, 50) 
+          : '{}';
+        
         html += `
           <div class="stub-item">
             <div class="stub-info">
               ${businessName}
               <span class="stub-method">${method}</span>
               <span class="stub-predicate">${predicateStr}</span>
-              <span class="stub-response">${JSON.stringify(mock.responseBody).substring(0, 50)}...</span>
+              <span class="stub-response">${responsePreview}...</span>
             </div>
             <div class="stub-actions">
               <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
@@ -689,7 +694,7 @@ importSelected.addEventListener('click', async () => {
         },
         requestPayload: {},
         responseHeaders: {},
-        responseBody: item.response
+        responseBody: item.response || {}  // Default to {} if response is undefined
       };
     });
     
