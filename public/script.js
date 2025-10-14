@@ -380,7 +380,7 @@ let selectedImports = [];
 
 // Column name patterns for flexible matching
 const COLUMN_PATTERNS = {
-  businessName: ['name', 'business name', 'api name', 'description', 'label', 'title'],
+  businessName: ['name', 'business name', 'api name', 'description', 'label', 'title', 'action'],
   path: ['path', 'api path', 'endpoint', 'url', 'route', 'api', 'uri'],
   method: ['method', 'http method', 'verb', 'http verb'],
   request: ['request', 'request body', 'request payload', 'req body', 'request json', 'input', 'req'],
