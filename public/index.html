@@ -71,12 +71,12 @@
           <label for="responseHeaders">Response Headers JSON (Optional)</label>
           <textarea id="responseHeaders" placeholder='e.g., { "x-powered-by": "nodejs" }'></textarea>
 
-          <label for="responseBody">Response Body JSON <span class="required">*</span>
+          <label for="responseBody">Response Body JSON
             <span style="color: #888; font-size: 13px; display: block;">
-              <em>The JSON response to return when this mock matches.</em>
+              <em>The JSON response to return. Can be empty {} for 204 No Content responses.</em>
             </span>
           </label>
-          <textarea id="responseBody" required placeholder='e.g., { "status": "success" }'></textarea>
+          <textarea id="responseBody" placeholder='e.g., { "status": "success" } or just {}'></textarea>
 
           <div class="button-group">
             <button type="submit" id="submitBtn">Save Mock</button>

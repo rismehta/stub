@@ -109,8 +109,13 @@ router.post('/saveOrUpdate', async (req, res) => {
   try {
     const { businessName, apiName, method, predicate, requestPayload, responseHeaders, responseBody } = req.body;
 
-    if (!apiName || !responseBody) {
-      return res.status(400).json({ error: 'apiName and responseBody are required' });
+    if (!apiName) {
+      return res.status(400).json({ error: 'apiName is required' });
+    }
+    
+    // responseBody can be empty object {}, just not null/undefined
+    if (responseBody === undefined || responseBody === null) {
+      return res.status(400).json({ error: 'responseBody is required (can be empty object)' });
     }
 
     const predReq = predicate?.request || {};
@@ -288,11 +293,21 @@ router.post('/import/batch', async (req, res) => {
     for (const mockData of mocks) {
       try {
         // Validate required fields
-        if (!mockData.apiName || !mockData.responseBody) {
+        if (!mockData.apiName) {
           results.push({ 
             success: false, 
             apiName: mockData.apiName || 'unknown',
-            error: 'apiName and responseBody are required' 
+            error: 'apiName is required' 
+          });
+          continue;
+        }
+        
+        // responseBody can be empty object {}, just not null/undefined
+        if (mockData.responseBody === undefined || mockData.responseBody === null) {
+          results.push({ 
+            success: false, 
+            apiName: mockData.apiName,
+            error: 'responseBody is required (can be empty object)' 
           });
           continue;
         }

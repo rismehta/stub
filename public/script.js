@@ -96,12 +96,12 @@ form.addEventListener('submit', async (e) => {
   const responseHeaders = parseJSONSafe(responseHeadersText);
   if (responseHeaders === null) return showError('Invalid Response Headers JSON');
 
-  const responseBody = parseJSONSafe(responseBodyText);
+  // If response body is empty, default to {}
+  const responseBodyValue = responseBodyText.trim() || '{}';
+  const responseBody = parseJSONSafe(responseBodyValue);
   if (responseBody === null) return showError('Invalid Response Body JSON');
 
-  if (Object.keys(responseBody).length === 0) {
-    return showError('Response Body JSON cannot be empty');
-  }
+  // Empty response body {} is valid for some APIs (e.g., 204 No Content, empty 200 OK)
 
   submitBtn.disabled = true;
   const originalBtnText = submitBtn.textContent;
@@ -553,6 +553,8 @@ function parseRows(rows) {
             transformed[field] = parsed;
           }
         }
+        // If response is empty/missing, it defaults to {} (from line 537)
+        // This is valid for 204 No Content, empty DELETE responses, etc.
       } else if (field === 'method') {
         // Normalize method to uppercase
         const methodValue = (value || 'POST').toString().trim().toUpperCase();
@@ -570,8 +572,10 @@ function parseRows(rows) {
     if (!transformed.path || transformed.path.trim() === '') {
       transformed.errors.push('Path is required');
     }
-    if (!transformed.response || Object.keys(transformed.response).length === 0) {
-      transformed.errors.push('Response is required');
+    // Response can be empty object {} - that's valid for some APIs
+    // Only error if response column is missing entirely
+    if (transformed.response === undefined || transformed.response === null) {
+      transformed.errors.push('Response column is required');
     }
     
     transformed.valid = transformed.errors.length === 0;
