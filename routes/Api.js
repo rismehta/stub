@@ -263,18 +263,24 @@ router.post('/saveOrUpdate', async (req, res) => {
 });
 
 // Reload all imposters
+// Standalone reload function (can be called directly or via HTTP)
+async function reloadAllImposters() {
+  const allMocks = await ApiMock.find({});
+  console.log(`Reloading ${allMocks.length} mocks into single imposter`);
+  
+  if (allMocks.length > 0) {
+    await upsertImposter(allMocks);
+  } else {
+    console.log('No mocks to load');
+  }
+  
+  return allMocks.length;
+}
+
 router.post('/reloadAllImposters', async (req, res) => {
   try {
-    const allMocks = await ApiMock.find({});
-    console.log(`Reloading ${allMocks.length} mocks into single imposter`);
-    
-    if (allMocks.length > 0) {
-      await upsertImposter(allMocks);
-    } else {
-      console.log('No mocks to load');
-    }
-    
-    res.json({ message: 'All mocks reloaded into imposter', count: allMocks.length });
+    const count = await reloadAllImposters();
+    res.json({ message: 'All mocks reloaded into imposter', count });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reload imposters' });
@@ -446,3 +452,4 @@ router.post('/import/batch', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.reloadAllImposters = reloadAllImposters;

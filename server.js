@@ -8,6 +8,7 @@ const path = require('path');
 const axios = require('axios');
 
 const apiRoutes = require('./routes/Api');
+const { reloadAllImposters } = require('./routes/Api');
 
 const app = express();
 
@@ -99,19 +100,22 @@ app.use('/mock', async (req, res) => {
 });
 
 const PORT = process.env.PORT || process.env.BACKEND_PORT || 10000;
-const BACKEND_BASE_URL=process.env.BACKEND_BASE_URL|| "http://localhost"
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost/mock-api-db';
 
 mongoose.connect(MONGODB_URI)
 .then(async () => {
+  console.log('MongoDB connected successfully');
   
   app.listen(PORT, async () => {
     console.log(`Backend server running on port ${PORT}`);
+    
+    // Auto-reload all imposters from database on startup
+    console.log('Auto-reloading all mocks from database...');
     try {
-     await axios.post(`${BACKEND_BASE_URL}:${PORT}/api/reloadAllImposters`);
-      console.log('All imposters reloaded on startup');
+      const count = await reloadAllImposters();
+      console.log(`✅ Successfully reloaded ${count} mocks into Mountebank on startup`);
     } catch (err) {
-      console.error('Error reloading imposters on startup:', err.message);
+      console.error('❌ Error reloading imposters on startup:', err.message);
     }
   });
 })

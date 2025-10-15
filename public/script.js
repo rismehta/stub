@@ -852,6 +852,14 @@ testModal.addEventListener('click', (e) => {
   }
 });
 
+// Close modal on Escape key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && testModal.style.display === 'flex') {
+    testModal.style.display = 'none';
+    currentTestMock = null;
+  }
+});
+
 executeTest.addEventListener('click', async () => {
   if (!currentTestMock) return;
   
