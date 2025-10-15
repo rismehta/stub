@@ -245,18 +245,22 @@ button#submitBtn:disabled {
 }
 
 .btn-secondary {
-  background: linear-gradient(90deg, #c9b89a, #a89675) !important;
-  color: #5b3e1b !important;
-  font-weight: 800 !important;
-  cursor: pointer !important;
-  box-shadow: 4px 6px 16px rgba(169, 150, 117, 0.4) !important;
-  border: 2px solid #a67c52 !important;
+  background: linear-gradient(90deg, #9ca3af, #6b7280);
+  border: none;
+  border-radius: 24px;
+  padding: 18px 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 6px 8px 22px rgba(75, 85, 99, 0.5), inset 0 -5px 20px rgba(107, 114, 128, 0.6);
+  user-select: none;
+  transition: box-shadow 0.3s ease, background 0.3s ease;
 }
 
 .btn-secondary:hover {
-  background: linear-gradient(90deg, #b5a688, #96805f) !important;
-  box-shadow: 5px 8px 20px rgba(150, 128, 95, 0.6) !important;
-  transform: translateY(-1px);
+  box-shadow: 7px 12px 34px rgba(75, 85, 99, 0.7);
+  background: linear-gradient(90deg, #6b7280, #4b5563);
 }
 
 /* Mocks list */

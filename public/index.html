@@ -75,12 +75,46 @@
           <label for="responseHeaders">Response Headers JSON (Optional)</label>
           <textarea id="responseHeaders" placeholder='e.g., { "x-powered-by": "nodejs" }'></textarea>
 
-          <label for="responseBody">Response Body JSON
-            <span style="color: #888; font-size: 13px; display: block;">
-              <em>The JSON response to return. Can be empty {} for 204 No Content responses.</em>
-            </span>
-          </label>
-          <textarea id="responseBody" placeholder='e.g., { "status": "success" } or just {}'></textarea>
+          <label for="responseType">Response Type</label>
+          <select id="responseType">
+            <option value="static" selected>Static (JSON Response)</option>
+            <option value="dynamic">Dynamic (JavaScript Function)</option>
+          </select>
+
+          <div id="staticResponseSection">
+            <label for="responseBody">Response Body JSON
+              <span style="color: #888; font-size: 13px; display: block;">
+                <em>The JSON response to return. Can be empty {} for 204 No Content responses.</em>
+              </span>
+            </label>
+            <textarea id="responseBody" placeholder='e.g., { "status": "success" } or just {}'></textarea>
+          </div>
+
+          <div id="dynamicResponseSection" style="display: none;">
+            <label for="responseFunction">Response Function (JavaScript)
+              <span style="color: #888; font-size: 13px; display: block;">
+                <em>JavaScript function that returns a dynamic response. Has access to 'request' object.</em>
+              </span>
+            </label>
+            <textarea id="responseFunction" rows="12" placeholder='(request) => {
+  // Example: Time-based validation (within 2 minutes)
+  const now = new Date();
+  const requestTime = new Date(request.body.timestamp);
+  const diffMinutes = (now - requestTime) / 60000;
+  
+  return {
+    statusCode: diffMinutes <= 2 ? 200 : 400,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      valid: diffMinutes <= 2,
+      message: diffMinutes <= 2 ? "Within time window" : "Request expired",
+      currentTime: now.toISOString(),
+      requestTime: requestTime.toISOString(),
+      differenceMinutes: Math.round(diffMinutes * 100) / 100
+    })
+  };
+}'></textarea>
+          </div>
 
           <div class="button-group">
             <button type="submit" id="submitBtn">Save Mock</button>
@@ -92,7 +126,10 @@
 
       <!-- MANAGE MOCKS TAB -->
       <div id="manageTab" class="tab-content">
-        <h2>Manage Mocks</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <h2 style="margin: 0;">Manage Mocks</h2>
+          <button type="button" id="exportAllMocks" class="btn-primary">Export All to Excel</button>
+        </div>
         <div id="mocksList">
           <p class="loading">Loading mocks...</p>
         </div>

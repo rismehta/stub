@@ -10,10 +10,14 @@ const ApiMockSchema = new mongoose.Schema({
     query: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   requestPayload: { type: mongoose.Schema.Types.Mixed, default: {} },
+  responseType: { type: String, default: 'static', enum: ['static', 'dynamic'] },
+  responseFunction: { type: String, default: '' },
   responseHeaders: { type: mongoose.Schema.Types.Mixed, default: {} },
   responseBody: { type: mongoose.Schema.Types.Mixed, required: true }
 }, { timestamps: true });
 
-ApiMockSchema.index({ apiName: 1, 'predicate.request': 1, 'predicate.headers': 1 }, { unique: true });
+// Note: No unique index - users can create multiple stubs for the same path
+// with different or even identical predicates. Mountebank will use the first
+// matching stub based on the order (sorted by specificity in our code).
 
 module.exports = mongoose.model('ApiMock', ApiMockSchema);

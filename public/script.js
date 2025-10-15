@@ -7,6 +7,21 @@ const formTitle = document.getElementById('formTitle');
 
 let currentEditId = null;
 
+// Response type toggle
+const responseTypeSelect = document.getElementById('responseType');
+const staticResponseSection = document.getElementById('staticResponseSection');
+const dynamicResponseSection = document.getElementById('dynamicResponseSection');
+
+responseTypeSelect.addEventListener('change', () => {
+  if (responseTypeSelect.value === 'dynamic') {
+    staticResponseSection.style.display = 'none';
+    dynamicResponseSection.style.display = 'block';
+  } else {
+    staticResponseSection.style.display = 'block';
+    dynamicResponseSection.style.display = 'none';
+  }
+});
+
 // Tab switching
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -23,6 +38,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     // Load mocks when switching to manage tab
     if (tab === 'manage') {
       loadMocks();
+    }
+    
+    // Reset form when switching to create tab
+    if (tab === 'create' && currentEditId !== null) {
+      resetForm();
+      formTitle.textContent = 'Create New Mock';
+      cancelBtn.style.display = 'none';
+      currentEditId = null;
     }
   });
 });
@@ -59,6 +82,11 @@ function resetForm() {
   document.getElementById('mockId').value = '';
   messageDiv.textContent = '';
   messageDiv.className = 'message';
+  
+  // Reset response type to static and show correct section
+  document.getElementById('responseType').value = 'static';
+  staticResponseSection.style.display = 'block';
+  dynamicResponseSection.style.display = 'none';
 }
 
 // Save/Update mock
@@ -75,7 +103,9 @@ form.addEventListener('submit', async (e) => {
   const predicateQueryText = document.getElementById('predicateQuery').value.trim();
   const requestPayloadText = document.getElementById('requestPayload').value.trim();
   const responseHeadersText = document.getElementById('responseHeaders').value.trim();
+  const responseType = document.getElementById('responseType').value;
   const responseBodyText = document.getElementById('responseBody').value.trim();
+  const responseFunctionText = document.getElementById('responseFunction').value.trim();
 
   if (!apiName) {
     return showError('API Name is required');
@@ -96,10 +126,22 @@ form.addEventListener('submit', async (e) => {
   const responseHeaders = parseJSONSafe(responseHeadersText);
   if (responseHeaders === null) return showError('Invalid Response Headers JSON');
 
-  // If response body is empty, default to {}
-  const responseBodyValue = responseBodyText.trim() || '{}';
-  const responseBody = parseJSONSafe(responseBodyValue);
-  if (responseBody === null) return showError('Invalid Response Body JSON');
+  // Validate based on response type
+  let responseBody = {};
+  let responseFunction = '';
+  
+  if (responseType === 'dynamic') {
+    if (!responseFunctionText) {
+      return showError('Response Function is required for dynamic responses');
+    }
+    responseFunction = responseFunctionText;
+    responseBody = {}; // Empty for dynamic
+  } else {
+    // If response body is empty, default to {}
+    const responseBodyValue = responseBodyText.trim() || '{}';
+    responseBody = parseJSONSafe(responseBodyValue);
+    if (responseBody === null) return showError('Invalid Response Body JSON');
+  }
 
   // Empty response body {} is valid for some APIs (e.g., 204 No Content, empty 200 OK)
 
@@ -117,6 +159,8 @@ form.addEventListener('submit', async (e) => {
       query: predicateQuery
     },
     requestPayload,
+    responseType,
+    responseFunction,
     responseHeaders,
     responseBody,
   };
@@ -255,6 +299,50 @@ async function loadMocks() {
   }
 }
 
+// Export all mocks to Excel
+document.getElementById('exportAllMocks').addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/mocks');
+    const mocks = await response.json();
+    
+    if (mocks.length === 0) {
+      showError('No mocks to export');
+      return;
+    }
+    
+    // Prepare data for Excel
+    const data = [
+      ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body']
+    ];
+    
+    mocks.forEach(mock => {
+      data.push([
+        mock.businessName || '',
+        mock.apiName || '',
+        mock.method || 'POST',
+        JSON.stringify(mock.predicate?.headers || {}),
+        JSON.stringify(mock.predicate?.query || {}),
+        JSON.stringify(mock.predicate?.request || {}),
+        JSON.stringify(mock.responseHeaders || {}),
+        JSON.stringify(mock.responseBody || {})
+      ]);
+    });
+    
+    // Create Excel file
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mocks');
+    
+    // Download
+    const timestamp = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `mock-export-${timestamp}.xlsx`);
+    
+    showSuccess(`Exported ${mocks.length} mock(s) to Excel`);
+  } catch (err) {
+    showError('Error exporting mocks: ' + err.message);
+  }
+});
+
 // Edit mock
 window.editMock = async function(id) {
   try {
@@ -275,8 +363,19 @@ window.editMock = async function(id) {
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
     document.getElementById('predicateQuery').value = JSON.stringify(mock.predicate?.query || {}, null, 2);
     document.getElementById('requestPayload').value = JSON.stringify(mock.requestPayload || {}, null, 2);
+    document.getElementById('responseType').value = mock.responseType || 'static';
+    document.getElementById('responseFunction').value = mock.responseFunction || '';
     document.getElementById('responseHeaders').value = JSON.stringify(mock.responseHeaders || {}, null, 2);
     document.getElementById('responseBody').value = JSON.stringify(mock.responseBody || {}, null, 2);
+    
+    // Trigger response type toggle
+    if (mock.responseType === 'dynamic') {
+      staticResponseSection.style.display = 'none';
+      dynamicResponseSection.style.display = 'block';
+    } else {
+      staticResponseSection.style.display = 'block';
+      dynamicResponseSection.style.display = 'none';
+    }
     
     // Switch to create tab
     document.querySelector('.tab-btn[data-tab="create"]').click();
@@ -314,8 +413,19 @@ window.cloneMock = async function(id) {
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
     document.getElementById('predicateQuery').value = JSON.stringify(mock.predicate?.query || {}, null, 2);
     document.getElementById('requestPayload').value = JSON.stringify(mock.requestPayload || {}, null, 2);
+    document.getElementById('responseType').value = mock.responseType || 'static';
+    document.getElementById('responseFunction').value = mock.responseFunction || '';
     document.getElementById('responseHeaders').value = JSON.stringify(mock.responseHeaders || {}, null, 2);
     document.getElementById('responseBody').value = JSON.stringify(mock.responseBody || {}, null, 2);
+    
+    // Trigger response type toggle
+    if (mock.responseType === 'dynamic') {
+      staticResponseSection.style.display = 'none';
+      dynamicResponseSection.style.display = 'block';
+    } else {
+      staticResponseSection.style.display = 'block';
+      dynamicResponseSection.style.display = 'none';
+    }
     
     // Switch to create tab
     document.querySelector('.tab-btn[data-tab="create"]').click();
@@ -387,7 +497,8 @@ const COLUMN_PATTERNS = {
   request: ['request', 'request body', 'request payload', 'req body', 'request json', 'input', 'req'],
   response: ['response', 'response body', 'response payload', 'res body', 'response json', 'output', 'res'],
   headers: ['headers', 'request headers', 'header', 'http headers'],
-  query: ['query', 'query params', 'query parameters', 'query string', 'url params']
+  query: ['query', 'query params', 'query parameters', 'query string', 'url params'],
+  responseHeaders: ['response headers', 'response header', 'res headers', 'output headers']
 };
 
 function detectColumn(headerName) {
@@ -543,6 +654,7 @@ function parseRows(rows) {
       response: {},
       headers: {},
       query: {},
+      responseHeaders: {},
       errors: [],
       rowIndex: index + 2 // +2 because Excel rows start at 1 and we have headers
     };
@@ -550,7 +662,7 @@ function parseRows(rows) {
     for (const [header, field] of Object.entries(mapping)) {
       const value = row[header];
       
-      if (field === 'request' || field === 'response' || field === 'headers' || field === 'query') {
+      if (field === 'request' || field === 'response' || field === 'headers' || field === 'query' || field === 'responseHeaders') {
         if (value && value.trim() !== '') {
           const parsed = parseJSONSafe(value);
           if (parsed === null) {
@@ -559,7 +671,7 @@ function parseRows(rows) {
             transformed[field] = parsed;
           }
         }
-        // If response is empty/missing, it defaults to {} (from line 537)
+        // If response/responseHeaders are empty/missing, they default to {} 
         // This is valid for 204 No Content, empty DELETE responses, etc.
       } else if (field === 'method') {
         // Normalize method to uppercase
@@ -694,7 +806,7 @@ importSelected.addEventListener('click', async () => {
           query: item.query || {}
         },
         requestPayload: {},
-        responseHeaders: {},
+        responseHeaders: item.responseHeaders || {},
         responseBody: item.response || {}  // Default to {} if response is undefined
       };
     });
@@ -740,11 +852,11 @@ importSelected.addEventListener('click', async () => {
 
 // Template downloads
 document.getElementById('downloadCsvTemplate').addEventListener('click', () => {
-  const csv = `Business Name,API Path,HTTP Method,Request Headers,Query Parameters,Request Body,Response Body
-Admin User Login,/users/login,POST,"{""x-api-key"":""admin-key-123""}","{}","{""username"":""admin""}","{""token"":""admin-123"",""role"":""admin""}"
-Guest User Login,/users/login,POST,"{}","{}","{""username"":""guest""}","{""token"":""guest-456"",""role"":""guest""}"
-Get User Profile,/users/profile,GET,"{""authorization"":""Bearer *""}","{""userId"":""*""}","{}","{""name"":""John Doe"",""email"":""john@example.com""}"
-Search Orders,/orders,GET,"{}","{""status"":""pending"",""page"":""*""}","{}","{""orders"":[{""id"":1,""status"":""pending""}]}"`;
+  const csv = `Business Name,API Path,HTTP Method,Request Headers,Query Parameters,Request Body,Response Headers,Response Body
+Admin User Login,/users/login,POST,"{""x-api-key"":""admin-key-123""}","{}","{""username"":""admin""}","{""x-powered-by"":""mock-api""}","{""token"":""admin-123"",""role"":""admin""}"
+Guest User Login,/users/login,POST,"{}","{}","{""username"":""guest""}","{}","{""token"":""guest-456"",""role"":""guest""}"
+Get User Profile,/users/profile,GET,"{""authorization"":""Bearer *""}","{""userId"":""*""}","{}","{""content-type"":""application/json""}","{""name"":""John Doe"",""email"":""john@example.com""}"
+Search Orders,/orders,GET,"{}","{""status"":""pending"",""page"":""*""}","{}","{}","{""orders"":[{""id"":1,""status"":""pending""}]}"`;
   
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -757,11 +869,11 @@ Search Orders,/orders,GET,"{}","{""status"":""pending"",""page"":""*""}","{}","{
 
 document.getElementById('downloadXlsxTemplate').addEventListener('click', () => {
   const data = [
-    ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Body'],
-    ['Admin User Login', '/users/login', 'POST', '{"x-api-key":"admin-key-123"}', '{}', '{"username":"admin"}', '{"token":"admin-123","role":"admin"}'],
-    ['Guest User Login', '/users/login', 'POST', '{}', '{}', '{"username":"guest"}', '{"token":"guest-456","role":"guest"}'],
-    ['Get User Profile', '/users/profile', 'GET', '{"authorization":"Bearer *"}', '{"userId":"*"}', '{}', '{"name":"John Doe","email":"john@example.com"}'],
-    ['Search Orders', '/orders', 'GET', '{}', '{"status":"pending","page":"*"}', '{}', '{"orders":[{"id":1,"status":"pending"}]}']
+    ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body'],
+    ['Admin User Login', '/users/login', 'POST', '{"x-api-key":"admin-key-123"}', '{}', '{"username":"admin"}', '{"x-powered-by":"mock-api"}', '{"token":"admin-123","role":"admin"}'],
+    ['Guest User Login', '/users/login', 'POST', '{}', '{}', '{"username":"guest"}', '{}', '{"token":"guest-456","role":"guest"}'],
+    ['Get User Profile', '/users/profile', 'GET', '{"authorization":"Bearer *"}', '{"userId":"*"}', '{}', '{"content-type":"application/json"}', '{"name":"John Doe","email":"john@example.com"}'],
+    ['Search Orders', '/orders', 'GET', '{}', '{"status":"pending","page":"*"}', '{}', '{}', '{"orders":[{"id":1,"status":"pending"}]}']
   ];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
@@ -825,7 +937,7 @@ async function testMock(mockId, apiName, method) {
       : '{}';
     
     // Pre-fill request body (with actual data from mock)
-    const mockRequest = mock.predicate?.request || mock.responseBody || {};
+    const mockRequest = mock.predicate?.request || {};
     testBody.value = Object.keys(mockRequest).length > 0
       ? JSON.stringify(mockRequest, null, 2)
       : '{}';

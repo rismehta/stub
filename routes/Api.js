@@ -147,7 +147,7 @@ function buildStubs(apiMocks) {
       }
     }
 
-    // Use simple 'is' response instead of injection for reliability
+    // Build response based on type (static vs dynamic)
     const headers = Object.assign({}, doc.responseHeaders || {});
     if (!headers['content-type']) {
       headers['content-type'] = 'application/json';
@@ -155,16 +155,25 @@ function buildStubs(apiMocks) {
 
     const stub = {
       predicates,
-      responses: [
-        {
-          is: {
-            statusCode: 200,
-            headers: headers,
-            body: doc.responseBody
-          }
-        }
-      ]
+      responses: []
     };
+
+    if (doc.responseType === 'dynamic' && doc.responseFunction) {
+      // Use inject for dynamic responses
+      stub.responses.push({
+        inject: doc.responseFunction
+      });
+      console.log(`Dynamic response (inject) for ${doc.apiName}`);
+    } else {
+      // Use is for static responses (default)
+      stub.responses.push({
+        is: {
+          statusCode: 200,
+          headers: headers,
+          body: doc.responseBody
+        }
+      });
+    }
 
     return stub;
   });
@@ -199,15 +208,22 @@ async function upsertImposter(apiMocks) {
 // Save or update mock route
 router.post('/saveOrUpdate', async (req, res) => {
   try {
-    const { businessName, apiName, method, predicate, requestPayload, responseHeaders, responseBody } = req.body;
+    const { businessName, apiName, method, predicate, requestPayload, responseType, responseFunction, responseHeaders, responseBody } = req.body;
 
     if (!apiName) {
       return res.status(400).json({ error: 'apiName is required' });
     }
     
-    // responseBody can be empty object {}, just not null/undefined
-    if (responseBody === undefined || responseBody === null) {
-      return res.status(400).json({ error: 'responseBody is required (can be empty object)' });
+    // Validate based on response type
+    if (responseType === 'dynamic') {
+      if (!responseFunction || responseFunction.trim() === '') {
+        return res.status(400).json({ error: 'responseFunction is required for dynamic responses' });
+      }
+    } else {
+      // responseBody can be empty object {}, just not null/undefined
+      if (responseBody === undefined || responseBody === null) {
+        return res.status(400).json({ error: 'responseBody is required (can be empty object)' });
+      }
     }
 
     const predReq = predicate?.request || {};
@@ -229,8 +245,10 @@ router.post('/saveOrUpdate', async (req, res) => {
       doc.method = method || 'POST';
       doc.predicate = { request: predReq, headers: predHeaders, query: predQuery };
       doc.requestPayload = requestPayload || {};
+      doc.responseType = responseType || 'static';
+      doc.responseFunction = responseFunction || '';
       doc.responseHeaders = responseHeaders || {};
-      doc.responseBody = responseBody;
+      doc.responseBody = responseBody || {};
       await doc.save();
     } else {
       // Create new mock
@@ -240,8 +258,10 @@ router.post('/saveOrUpdate', async (req, res) => {
         method: method || 'POST',
         predicate: { request: predReq, headers: predHeaders, query: predQuery },
         requestPayload: requestPayload || {},
+        responseType: responseType || 'static',
+        responseFunction: responseFunction || '',
         responseHeaders: responseHeaders || {},
-        responseBody
+        responseBody: responseBody || {}
       });
       await doc.save();
     }
