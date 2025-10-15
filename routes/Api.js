@@ -9,19 +9,72 @@ const MB_URL = process.env.MB_URL || 'http://localhost:2525';
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 const IMPOSTER_NAME = 'mock-api-imposter';
 
-// Build Mountebank stubs from DB records
+// Calculate predicate specificity (more fields = more specific)
+function calculateSpecificity(doc) {
+  let count = 0;
+  
+  // Count request body predicate fields
+  const requestPred = doc.predicate?.request || {};
+  count += Object.keys(requestPred).length;
+  
+  // Count header predicate fields
+  const headersPred = doc.predicate?.headers || {};
+  count += Object.keys(headersPred).length;
+  
+  // Count query predicate fields
+  const queryPred = doc.predicate?.query || {};
+  count += Object.keys(queryPred).length;
+  
+  return count;
+}
+
+// Build Mountebank stubs from DB records with smart defaults
+// Sorts by specificity (most specific first) to handle overlapping predicates
 function buildStubs(apiMocks) {
-  return apiMocks.map(doc => {
+  // Sort by specificity DESC, then by creation date DESC
+  const sortedMocks = [...apiMocks].sort((a, b) => {
+    const specificityA = calculateSpecificity(a);
+    const specificityB = calculateSpecificity(b);
+    
+    // More specific first
+    if (specificityB !== specificityA) {
+      return specificityB - specificityA;
+    }
+    
+    // If same specificity, newer first
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
+  
+  console.log('Stub order (most specific first):');
+  sortedMocks.forEach((doc, i) => {
+    const spec = calculateSpecificity(doc);
+    console.log(`  ${i+1}. ${doc.apiName} (${doc.businessName || 'no name'}) - specificity: ${spec}`);
+  });
+  
+  return sortedMocks.map(doc => {
     const predicates = [];
 
-    // Match based on path containing the API name (primary predicate)
-    predicates.push({ contains: { path: `/${doc.apiName}` } });
+    // PATH MATCHING: Auto-detect regex vs exact match
+    const pathPattern = `/${doc.apiName}`;
+    const hasRegexChars = /[.*+?^${}()|[\]\\]/.test(pathPattern);
+    
+    if (hasRegexChars) {
+      // Regex pattern detected - use matches with anchors for full path match
+      const anchoredPath = `^${pathPattern}$`;
+      predicates.push({ matches: { path: anchoredPath } });
+      console.log(`Path regex match: ${anchoredPath}`);
+    } else {
+      // Plain path - use equals for exact match
+      predicates.push({ equals: { path: pathPattern } });
+      console.log(`Path exact match: ${pathPattern}`);
+    }
     
     // Match on HTTP method (default to POST if not specified)
     const method = doc.method || 'POST';
     predicates.push({ equals: { method: method } });
     
-    // Optional: match on request body if provided
+    // SMART BODY MATCHING: Use 'contains' for partial match
+    // This allows extra fields like UUIDs, timestamps to be present
     const requestPred =
       doc.predicate && Object.keys(doc.predicate.request || {}).length > 0
         ? doc.predicate.request
@@ -31,28 +84,67 @@ function buildStubs(apiMocks) {
 
     if (requestPred) {
       predicates.push({ contains: { body: requestPred } });
+      console.log(`Body match (contains): ${JSON.stringify(requestPred)} - ignores extra fields`);
     }
 
-    // Optional: match on request headers if provided
+    // HEADER MATCHING: Use * for flexible matching, otherwise exact match
     const headersPred = doc.predicate?.headers || {};
     if (Object.keys(headersPred).length > 0) {
       Object.keys(headersPred).forEach(headerName => {
-        predicates.push({ 
-          equals: { 
-            headers: { 
-              [headerName.toLowerCase()]: headersPred[headerName] 
+        const lowerName = headerName.toLowerCase();
+        const headerValue = headersPred[headerName];
+        
+        if (headerValue === '*') {
+          // Flexible: just check header exists (handles dynamic tokens)
+          predicates.push({ 
+            exists: { 
+              headers: { [lowerName]: true } 
             } 
-          } 
-        });
+          });
+          console.log(`Header '${headerName}': flexible (* = any value)`);
+        } else {
+          // Exact match
+          predicates.push({ 
+            equals: { 
+              headers: { [lowerName]: headerValue } 
+            } 
+          });
+          console.log(`Header '${headerName}': exact match = ${headerValue}`);
+        }
       });
-      console.log(`Added header predicates for ${doc.apiName}:`, JSON.stringify(headersPred));
     }
 
-    // Optional: match on query parameters if provided
+    // QUERY MATCHING: Use * for flexible matching, otherwise exact match
     const queryPred = doc.predicate?.query || {};
     if (Object.keys(queryPred).length > 0) {
-      predicates.push({ equals: { query: queryPred } });
-      console.log(`Added query predicates for ${doc.apiName}:`, JSON.stringify(queryPred));
+      const flexibleParams = {};
+      const exactParams = {};
+      
+      Object.keys(queryPred).forEach(param => {
+        const value = queryPred[param];
+        
+        if (value === '*') {
+          flexibleParams[param] = true;
+        } else {
+          exactParams[param] = value;
+        }
+      });
+      
+      // Add flexible params (exists check)
+      Object.keys(flexibleParams).forEach(param => {
+        predicates.push({ 
+          exists: { 
+            query: { [param]: true } 
+          } 
+        });
+        console.log(`Query param '${param}': flexible (* = any value)`);
+      });
+      
+      // Add exact params (equals check)
+      if (Object.keys(exactParams).length > 0) {
+        predicates.push({ equals: { query: exactParams } });
+        console.log(`Query params exact match:`, exactParams);
+      }
     }
 
     // Use simple 'is' response instead of injection for reliability

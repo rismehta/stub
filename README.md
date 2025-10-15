@@ -241,6 +241,351 @@ curl -X POST https://mockapi-proxy.onrender.com/admin/action \
 
 ---
 
+## 🎯 Dynamic Matching & Smart Defaults
+
+The platform uses **intelligent predicate matching** to handle real-world scenarios like dynamic IDs, tokens, and extra fields automatically.
+
+### Smart Matching Rules
+
+#### 1. **Path Matching** 🛣️
+- **Plain paths** → Exact match (no regex chars detected)
+- **Regex patterns** → Full path regex match with anchors `^...$`
+- **Auto-detection** - System detects regex characters and switches mode
+
+**Plain Path Examples:**
+```javascript
+API Path: users/login
+✅ Matches ONLY: /users/login
+❌ Doesn't match: /abc/users/login (extra prefix)
+❌ Doesn't match: /users/login/extra (extra suffix)
+
+API Path: api/v1/orders
+✅ Matches ONLY: /api/v1/orders
+❌ Doesn't match: /api/v1/orders/123
+```
+
+**Regex Pattern Examples:**
+
+Auto-detected regex characters: `. * + ? ^ $ { } ( ) | [ ] \`
+
+```javascript
+// .*  - Match any characters (wildcard)
+API Path: orders/.*
+✅ Matches: /orders/123, /orders/abc/details, /orders/anything
+❌ Doesn't match: /api/orders/123 (extra prefix)
+
+// \d+  - Match one or more digits
+API Path: users/\d+/profile
+✅ Matches: /users/123/profile, /users/456/profile
+❌ Doesn't match: /users/abc/profile (non-numeric)
+
+// [0-9a-f]  - Character class (brackets)
+API Path: users/[0-9a-f]{24}
+✅ Matches: /users/507f1f77bcf86cd799439011 (MongoDB ObjectId)
+❌ Doesn't match: /users/123 (too short)
+
+// ?  - Optional (zero or one)
+API Path: products(/\d+)?
+✅ Matches: /products, /products/123
+❌ Doesn't match: /products/123/456 (too many segments)
+
+// +  - One or more
+API Path: files/.+\\.pdf
+✅ Matches: /files/document.pdf, /files/report_2024.pdf
+❌ Doesn't match: /files/.pdf (nothing before .pdf)
+
+// {n,m}  - Repetition (curly braces)
+API Path: posts/\\d{1,5}
+✅ Matches: /posts/1, /posts/12, /posts/12345
+❌ Doesn't match: /posts/123456 (too many digits)
+
+// |  - Alternation (OR)
+API Path: (users|customers)/\\d+
+✅ Matches: /users/123, /customers/456
+❌ Doesn't match: /admins/789 (different prefix)
+
+// ()  - Grouping (parentheses)
+API Path: (api|v1)/orders
+✅ Matches: /api/orders, /v1/orders
+❌ Doesn't match: /api/v1/orders
+
+// ^$  - Anchors (auto-added by system, don't include in path)
+// System adds these automatically for full path matching
+// Input: users/\d+  →  System uses: ^/users/\d+$
+
+// .  - Match any single character (dot)
+API Path: files/test.
+✅ Matches: /files/test1, /files/testA, /files/test_
+❌ Doesn't match: /files/test (no character after test)
+
+// \\  - Escape character (backslash)
+API Path: docs/\\d+\\.txt
+✅ Matches: /docs/123.txt (escaped dot matches literal dot)
+❌ Doesn't match: /docs/123Xtxt (dot must be present)
+```
+
+#### 2. **Body Matching** 📦
+- **Uses `contains`** - Partial match only
+- **Ignores extra fields** - Dynamic UUIDs, timestamps, extra data allowed
+
+**Examples:**
+```javascript
+// Your predicate: { "amount": 100 }
+✅ Matches: { "amount": 100 }
+✅ Matches: { "amount": 100, "txnId": "uuid-123", "timestamp": "..." }
+✅ Matches: { "amount": 100, "currency": "USD", "extra": "fields" }
+❌ Doesn't match: { "amount": 200 }
+```
+
+#### 2.1 **Multiple Stubs with Overlapping Predicates** 🔄
+
+When multiple stubs have overlapping predicates, **the platform automatically sorts them by specificity**.
+
+**Specificity = Total number of predicate fields (body + headers + query)**
+
+**Automatic Sorting:**
+- ✅ More specific stubs checked first
+- ✅ Less specific stubs checked later
+- ✅ Same specificity → newer stubs first
+- ✅ No manual ordering needed!
+
+**Example Scenario:**
+
+You create 3 stubs for the same path `users`:
+
+**Stub 1: Premium Admin (created Day 1)**
+```javascript
+{
+  apiName: "users",
+  predicate: {
+    request: { "role": "admin", "tier": "premium" }  // 2 fields
+  },
+  responseBody: { "plan": "premium-admin" }
+}
+// Specificity = 2
+```
+
+**Stub 2: Any Admin (created Day 2)**
+```javascript
+{
+  apiName: "users",
+  predicate: {
+    request: { "role": "admin" }  // 1 field
+  },
+  responseBody: { "plan": "standard-admin" }
+}
+// Specificity = 1
+```
+
+**Stub 3: Admin with API Key (created Day 3)**
+```javascript
+{
+  apiName: "users",
+  predicate: {
+    request: { "role": "admin" },  // 1 field
+    headers: { "x-api-key": "*" }  // 1 field
+  },
+  responseBody: { "plan": "api-admin" }
+}
+// Specificity = 2
+```
+
+**Automatic Order (most specific first):**
+```
+1. Stub 3 (specificity 2, newest)
+2. Stub 1 (specificity 2, older)
+3. Stub 2 (specificity 1)
+```
+
+**Request Test Cases:**
+
+```javascript
+// Request 1: Admin with API key and premium tier
+POST /users
+Headers: { "x-api-key": "abc123" }
+Body: { "role": "admin", "tier": "premium", "name": "Alice" }
+
+✅ Checks Stub 3 first: Has role=admin ✓ + Has x-api-key ✓ → MATCHES
+Returns: { "plan": "api-admin" }
+
+// Request 2: Admin with premium tier (no API key)
+POST /users
+Body: { "role": "admin", "tier": "premium", "userId": "123" }
+
+❌ Checks Stub 3 first: No x-api-key header → DOESN'T MATCH
+✅ Checks Stub 1 next: Has role=admin ✓ + Has tier=premium ✓ → MATCHES
+Returns: { "plan": "premium-admin" }
+
+// Request 3: Basic admin (no tier, no API key)
+POST /users
+Body: { "role": "admin", "email": "admin@example.com" }
+
+❌ Checks Stub 3 first: No x-api-key header → DOESN'T MATCH
+❌ Checks Stub 1 next: No tier field → DOESN'T MATCH
+✅ Checks Stub 2 last: Has role=admin ✓ → MATCHES
+Returns: { "plan": "standard-admin" }
+```
+
+**Why This Matters:**
+
+Without automatic sorting, the order would be insertion order (Day 1, Day 2, Day 3). This could cause issues:
+- Stub 2 (Any Admin) might match first and return wrong response
+- More specific stubs would never be reached
+- Users would need to manually manage stub order
+
+**With automatic sorting:**
+- ✅ Create stubs in any order
+- ✅ Most specific always wins
+- ✅ Predictable behavior
+- ✅ No manual management
+
+**Console Log Example:**
+```
+Stub order (most specific first):
+  1. users (Admin with API Key) - specificity: 2
+  2. users (Premium Admin) - specificity: 2
+  3. users (Any Admin) - specificity: 1
+```
+
+#### 3. **Header Matching** 🔑
+- **Use `*` for flexible matching** - Matches any value
+- **Otherwise uses exact match**
+
+**Examples:**
+```javascript
+// Flexible matching (any value accepted)
+In UI: { "authorization": "*" }
+     or { "x-session-id": "*" }
+✅ Matches ANY value:
+  Authorization: Bearer abc123
+  Authorization: Bearer xyz789-different-token
+  x-session-id: any-session-value
+  x-api-key: any-key-works
+
+// Exact match (specific value required)
+In UI: { "content-type": "application/json" }
+     or { "authorization": "Bearer token123" }
+✅ Must match exactly: Content-Type: application/json
+❌ Doesn't match: Content-Type: text/plain
+✅ Must match exactly: Authorization: Bearer token123
+❌ Doesn't match: Authorization: Bearer different-token
+```
+
+**💡 Pro Tip:** For tokenized APIs, use `"*"` as the value!
+
+#### 4. **Query Parameter Matching** 🔍
+- **Use `*` for flexible matching** - Matches any value
+- **Otherwise uses exact match**
+
+**Examples:**
+```javascript
+// Mix exact and flexible matching
+In UI: { "page": "*", "limit": "*", "status": "active" }
+
+✅ Matches: ?page=1&limit=10&status=active
+✅ Matches: ?page=2&limit=50&status=active    (page/limit any value)
+✅ Matches: ?page=999&limit=100&status=active&extra=param
+❌ Doesn't match: ?page=1&limit=10&status=pending  (status must be 'active')
+❌ Doesn't match: ?limit=10&status=active  (missing 'page')
+
+// Exact match only
+In UI: { "page": "1", "limit": "10" }
+✅ Matches: ?page=1&limit=10
+❌ Doesn't match: ?page=2&limit=10  (wrong page value)
+❌ Doesn't match: ?page=1&limit=20  (wrong limit value)
+
+// Flexible match only (for pagination)
+In UI: { "page": "*", "limit": "*" }
+✅ Matches: ?page=1&limit=10
+✅ Matches: ?page=2&limit=50
+✅ Matches: ?page=999&limit=100
+```
+
+### Real-World Use Cases
+
+#### ✅ Tokenized APIs
+```javascript
+// Create mock with flexible auth header
+Headers: { "authorization": "*" }
+
+// Matches ALL these requests:
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Authorization: Bearer any-token-works
+Authorization: Bearer user-123-session-xyz
+
+// Or for any custom auth header:
+Headers: { "x-session-id": "*", "x-api-key": "*" }
+```
+
+#### ✅ UUID in Request Body
+```javascript
+// Create mock matching only 'action' field
+Body: { "action": "process" }
+
+// Matches ALL these requests:
+{ "action": "process", "requestId": "550e8400-e29b-41d4-a716-446655440000" }
+{ "action": "process", "timestamp": "2025-10-15T10:30:00Z", "user": "123" }
+{ "action": "process", "uuid": "any-uuid", "extra": "data" }
+```
+
+#### ✅ Dynamic User IDs
+```javascript
+// Create mock with regex path
+API Path: users/\d+/orders
+
+// Matches ALL these:
+GET /users/123/orders
+GET /users/456/orders
+GET /users/999999/orders
+```
+
+#### ✅ Pagination (Flexible)
+```javascript
+// Create mock with flexible query params
+Query: { "page": "*", "limit": "*" }
+
+// Matches ALL these (any page/limit values):
+GET /users?page=1&limit=10
+GET /users?page=2&limit=50
+GET /users?page=999&limit=100
+```
+
+#### ✅ Pagination (Exact Match)
+```javascript
+// Create mock with exact query params
+Query: { "page": "1", "limit": "10" }
+
+// Matches ONLY this:
+GET /users?page=1&limit=10
+
+// Does NOT match:
+GET /users?page=2&limit=10  ❌ (wrong page)
+GET /users?page=1&limit=20  ❌ (wrong limit)
+```
+
+### How to Control Matching Behavior
+
+**Default Behavior:**
+- ✅ Path: `equals` for plain paths, `matches` with anchors for regex patterns (auto-detected)
+- ✅ Body: `contains` (partial match, ignores extra fields)  
+- ✅ Headers: `equals` (exact match by default)
+- ✅ Query: `equals` (exact match by default)
+
+**Make Headers/Query Flexible:**
+Use `*` as the value
+
+```javascript
+// Exact match (default)
+Headers: { "authorization": "Bearer token123" }
+Query: { "page": "1" }
+
+// Flexible match (use * wildcard)
+Headers: { "authorization": "*" }      // Any token works
+Query: { "page": "*", "limit": "*" }  // Any page/limit works
+```
+
+---
+
 ## 🛠️ Tech Stack
 
 | Component | Technology |
