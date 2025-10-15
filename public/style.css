@@ -245,22 +245,22 @@ button#submitBtn:disabled {
 }
 
 .btn-secondary {
-  background: linear-gradient(90deg, #9ca3af, #6b7280);
+  background: linear-gradient(90deg, #94a3b8, #64748b);
   border: none;
   border-radius: 24px;
   padding: 18px 0;
   font-size: 1.3rem;
   font-weight: 800;
-  color: #fff;
+  color: #ffffff;
   cursor: pointer;
-  box-shadow: 6px 8px 22px rgba(75, 85, 99, 0.5), inset 0 -5px 20px rgba(107, 114, 128, 0.6);
+  box-shadow: 6px 8px 22px rgba(100, 116, 139, 0.7), inset 0 -5px 20px rgba(148, 163, 184, 0.8);
   user-select: none;
   transition: box-shadow 0.3s ease, background 0.3s ease;
 }
 
 .btn-secondary:hover {
-  box-shadow: 7px 12px 34px rgba(75, 85, 99, 0.7);
-  background: linear-gradient(90deg, #6b7280, #4b5563);
+  box-shadow: 7px 12px 34px rgba(100, 116, 139, 0.85);
+  background: linear-gradient(90deg, #64748b, #94a3b8 70%);
 }
 
 /* Mocks list */

@@ -140,7 +140,7 @@ form.addEventListener('submit', async (e) => {
     // If response body is empty, default to {}
     const responseBodyValue = responseBodyText.trim() || '{}';
     responseBody = parseJSONSafe(responseBodyValue);
-    if (responseBody === null) return showError('Invalid Response Body JSON');
+  if (responseBody === null) return showError('Invalid Response Body JSON');
   }
 
   // Empty response body {} is valid for some APIs (e.g., 204 No Content, empty 200 OK)
@@ -333,9 +333,16 @@ document.getElementById('exportAllMocks').addEventListener('click', async () => 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Mocks');
     
-    // Download
+    // Download using blob (cross-platform compatible)
     const timestamp = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `mock-export-${timestamp}.xlsx`);
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mock-export-${timestamp}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
     
     showSuccess(`Exported ${mocks.length} mock(s) to Excel`);
   } catch (err) {
