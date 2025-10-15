@@ -138,6 +138,36 @@
         <div id="importMessage" class="message"></div>
       </div>
     </section>
+
+    <!-- Test Modal -->
+    <div id="testModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <h2>Test Mock Stub</h2>
+        <div id="testMockInfo" class="test-info"></div>
+        
+        <label>Test Path <span style="color: #888; font-size: 13px;">(e.g., /users/123/profile - no /mock prefix)</span></label>
+        <input type="text" id="testPath" placeholder="/users/123/profile" style="margin-bottom: 15px;" />
+        
+        <label>Request Headers (JSON)</label>
+        <textarea id="testHeaders" placeholder='{"authorization": "Bearer token", "content-type": "application/json"}'></textarea>
+        
+        <label>Query Parameters (JSON)</label>
+        <textarea id="testQuery" placeholder='{"page": "1", "limit": "10"}'></textarea>
+        
+        <label>Request Body (JSON)</label>
+        <textarea id="testBody" placeholder='{"field": "value"}'></textarea>
+        
+        <div class="button-group">
+          <button type="button" id="executeTest" class="btn-primary">Send Request</button>
+          <button type="button" id="closeTest" class="btn-secondary">Close</button>
+        </div>
+        
+        <div id="testResult" class="test-result" style="display:none;">
+          <h3>Response</h3>
+          <div id="testResultContent"></div>
+        </div>
+      </div>
+    </div>
   </div>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>

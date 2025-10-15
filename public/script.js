@@ -232,6 +232,7 @@ async function loadMocks() {
               <span class="stub-response">${responsePreview}...</span>
             </div>
             <div class="stub-actions">
+              <button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>
               <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
               <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
               <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
@@ -739,10 +740,11 @@ importSelected.addEventListener('click', async () => {
 
 // Template downloads
 document.getElementById('downloadCsvTemplate').addEventListener('click', () => {
-  const csv = `Business Name,API Path,Request Body,Response Body
-Admin User Login,/users/login,"{""username"":""admin""}","{""token"":""admin-123"",""role"":""admin""}"
-Guest User Login,/users/login,"{""username"":""guest""}","{""token"":""guest-456"",""role"":""guest""}"
-Get User Profile,/users/profile,"{}","{""name"":""John Doe"",""email"":""john@example.com""}"`;
+  const csv = `Business Name,API Path,HTTP Method,Request Headers,Query Parameters,Request Body,Response Body
+Admin User Login,/users/login,POST,"{""x-api-key"":""admin-key-123""}","{}","{""username"":""admin""}","{""token"":""admin-123"",""role"":""admin""}"
+Guest User Login,/users/login,POST,"{}","{}","{""username"":""guest""}","{""token"":""guest-456"",""role"":""guest""}"
+Get User Profile,/users/profile,GET,"{""authorization"":""Bearer *""}","{""userId"":""*""}","{}","{""name"":""John Doe"",""email"":""john@example.com""}"
+Search Orders,/orders,GET,"{}","{""status"":""pending"",""page"":""*""}","{}","{""orders"":[{""id"":1,""status"":""pending""}]}"`;
   
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -755,14 +757,207 @@ Get User Profile,/users/profile,"{}","{""name"":""John Doe"",""email"":""john@ex
 
 document.getElementById('downloadXlsxTemplate').addEventListener('click', () => {
   const data = [
-    ['Business Name', 'API Path', 'Request Body', 'Response Body'],
-    ['Admin User Login', '/users/login', '{"username":"admin"}', '{"token":"admin-123","role":"admin"}'],
-    ['Guest User Login', '/users/login', '{"username":"guest"}', '{"token":"guest-456","role":"guest"}'],
-    ['Get User Profile', '/users/profile', '{}', '{"name":"John Doe","email":"john@example.com"}']
+    ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Body'],
+    ['Admin User Login', '/users/login', 'POST', '{"x-api-key":"admin-key-123"}', '{}', '{"username":"admin"}', '{"token":"admin-123","role":"admin"}'],
+    ['Guest User Login', '/users/login', 'POST', '{}', '{}', '{"username":"guest"}', '{"token":"guest-456","role":"guest"}'],
+    ['Get User Profile', '/users/profile', 'GET', '{"authorization":"Bearer *"}', '{"userId":"*"}', '{}', '{"name":"John Doe","email":"john@example.com"}'],
+    ['Search Orders', '/orders', 'GET', '{}', '{"status":"pending","page":"*"}', '{}', '{"orders":[{"id":1,"status":"pending"}]}']
   ];
   
   const ws = XLSX.utils.aoa_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Mocks');
   XLSX.writeFile(wb, 'mock-import-template.xlsx');
+});
+
+// ==================== TEST MODAL FUNCTIONALITY ====================
+
+const testModal = document.getElementById('testModal');
+const testMockInfo = document.getElementById('testMockInfo');
+const testHeaders = document.getElementById('testHeaders');
+const testQuery = document.getElementById('testQuery');
+const testBody = document.getElementById('testBody');
+const executeTest = document.getElementById('executeTest');
+const closeTest = document.getElementById('closeTest');
+const testResult = document.getElementById('testResult');
+const testResultContent = document.getElementById('testResultContent');
+
+let currentTestMock = null;
+
+async function testMock(mockId, apiName, method) {
+  try {
+    // Fetch mock details
+    const resp = await fetch(`/api/mocks/${mockId}`);
+    if (!resp.ok) {
+      showError('Failed to load mock details');
+      return;
+    }
+    
+    const mock = await resp.json();
+    currentTestMock = mock;
+    
+    // Show modal
+    testModal.style.display = 'flex';
+    
+    // Pre-fill mock information
+    testMockInfo.innerHTML = `
+      <div style="background: #f6f0e2; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+        <p><strong>Method:</strong> ${method}</p>
+        <p><strong>Pattern:</strong> /${apiName}</p>
+        <p><strong>Business Name:</strong> ${mock.businessName || 'N/A'}</p>
+      </div>
+    `;
+    
+    // Pre-fill test form with mock's predicate data
+    const testPathInput = document.getElementById('testPath');
+    testPathInput.value = apiName.startsWith('/') ? apiName : `/${apiName}`;
+    
+    // Pre-fill headers (with actual data from mock)
+    const mockHeaders = mock.predicate?.headers || {};
+    testHeaders.value = Object.keys(mockHeaders).length > 0 
+      ? JSON.stringify(mockHeaders, null, 2)
+      : '{}';
+    
+    // Pre-fill query parameters (with actual data from mock)
+    const mockQuery = mock.predicate?.query || {};
+    testQuery.value = Object.keys(mockQuery).length > 0
+      ? JSON.stringify(mockQuery, null, 2)
+      : '{}';
+    
+    // Pre-fill request body (with actual data from mock)
+    const mockRequest = mock.predicate?.request || mock.responseBody || {};
+    testBody.value = Object.keys(mockRequest).length > 0
+      ? JSON.stringify(mockRequest, null, 2)
+      : '{}';
+    
+    // Clear previous result
+    testResult.style.display = 'none';
+    testResultContent.innerHTML = '';
+    
+  } catch (err) {
+    showError('Error opening test modal: ' + err.message);
+  }
+}
+
+closeTest.addEventListener('click', () => {
+  testModal.style.display = 'none';
+  currentTestMock = null;
+});
+
+// Close modal on outside click
+testModal.addEventListener('click', (e) => {
+  if (e.target === testModal) {
+    testModal.style.display = 'none';
+    currentTestMock = null;
+  }
+});
+
+executeTest.addEventListener('click', async () => {
+  if (!currentTestMock) return;
+  
+  executeTest.disabled = true;
+  executeTest.textContent = 'Sending...';
+  testResult.style.display = 'none';
+  
+  try {
+    // Parse test inputs
+    const headers = parseJSONSafe(testHeaders.value.trim() || '{}');
+    const query = parseJSONSafe(testQuery.value.trim() || '{}');
+    const body = parseJSONSafe(testBody.value.trim() || '{}');
+    
+    if (headers === null) {
+      testResultContent.innerHTML = '<div style="color: #dc2626;">Invalid Headers JSON</div>';
+      testResult.style.display = 'block';
+      return;
+    }
+    if (query === null) {
+      testResultContent.innerHTML = '<div style="color: #dc2626;">Invalid Query Parameters JSON</div>';
+      testResult.style.display = 'block';
+      return;
+    }
+    if (body === null) {
+      testResultContent.innerHTML = '<div style="color: #dc2626;">Invalid Request Body JSON</div>';
+      testResult.style.display = 'block';
+      return;
+    }
+    
+    // Build query string
+    const queryString = Object.keys(query).length > 0
+      ? '?' + new URLSearchParams(query).toString()
+      : '';
+    
+    // Build URL from user's test path input
+    const testPathInput = document.getElementById('testPath');
+    let testPath = testPathInput.value.trim();
+    if (!testPath.startsWith('/')) {
+      testPath = `/${testPath}`;
+    }
+    const testUrl = `/mock${testPath}${queryString}`;
+    
+    // Send test request
+    const startTime = performance.now();
+    const method = currentTestMock.method || 'POST';
+    
+    const requestOptions = {
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers
+      }
+    };
+    
+    if (method !== 'GET' && method !== 'HEAD') {
+      requestOptions.body = JSON.stringify(body);
+    }
+    
+    const response = await fetch(testUrl, requestOptions);
+    const endTime = performance.now();
+    const duration = (endTime - startTime).toFixed(2);
+    
+    // Get response
+    const responseText = await response.text();
+    let responseBody;
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+    
+    // Display result
+    const statusColor = response.ok ? '#16a34a' : '#dc2626';
+    const statusIcon = response.ok ? '✅' : '❌';
+    
+    testResultContent.innerHTML = `
+      <div style="margin-bottom: 15px;">
+        <strong style="color: ${statusColor};">${statusIcon} ${response.status} ${response.statusText}</strong>
+        <span style="color: #888; margin-left: 10px;">(${duration}ms)</span>
+      </div>
+      
+      <div style="margin-bottom: 15px;">
+        <strong>Request:</strong>
+        <pre style="background: #f6f0e2; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 13px;">${method} ${testUrl}
+Headers: ${JSON.stringify(headers, null, 2)}
+${method !== 'GET' && method !== 'HEAD' ? 'Body: ' + JSON.stringify(body, null, 2) : ''}</pre>
+      </div>
+      
+      <div>
+        <strong>Response:</strong>
+        <pre style="background: #f6f0e2; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 13px;">${JSON.stringify(responseBody, null, 2)}</pre>
+      </div>
+    `;
+    
+    testResult.style.display = 'block';
+    
+  } catch (err) {
+    testResultContent.innerHTML = `
+      <div style="color: #dc2626;">
+        <strong>❌ Request Failed</strong>
+        <pre style="background: #fee; padding: 10px; border-radius: 6px; margin-top: 10px;">${err.message}</pre>
+      </div>
+    `;
+    testResult.style.display = 'block';
+  } finally {
+    executeTest.disabled = false;
+    executeTest.textContent = 'Send Request';
+  }
 });
