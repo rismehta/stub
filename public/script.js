@@ -310,6 +310,16 @@ document.getElementById('exportAllMocks').addEventListener('click', async () => 
       return;
     }
     
+    // Helper function to truncate large values (Excel cell limit is 32767 characters)
+    const truncateCell = (value, maxLength = 32000) => {
+      if (!value) return '';
+      const str = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      if (str.length > maxLength) {
+        return str.substring(0, maxLength) + '... [TRUNCATED]';
+      }
+      return str;
+    };
+    
     // Prepare data for Excel
     const data = [
       ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body']
@@ -320,11 +330,11 @@ document.getElementById('exportAllMocks').addEventListener('click', async () => 
         mock.businessName || '',
         mock.apiName || '',
         mock.method || 'POST',
-        JSON.stringify(mock.predicate?.headers || {}),
-        JSON.stringify(mock.predicate?.query || {}),
-        JSON.stringify(mock.predicate?.request || {}),
-        JSON.stringify(mock.responseHeaders || {}),
-        JSON.stringify(mock.responseBody || {})
+        truncateCell(mock.predicate?.headers || {}),
+        truncateCell(mock.predicate?.query || {}),
+        truncateCell(mock.predicate?.request || {}),
+        truncateCell(mock.responseHeaders || {}),
+        truncateCell(mock.responseBody || {})
       ]);
     });
     
