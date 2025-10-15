@@ -150,6 +150,28 @@ button#submitBtn:disabled {
   box-shadow: none;
 }
 
+/* Cancel button - matching Save Mock style */
+button#cancelBtn {
+  margin-top: 2.5rem;
+  width: 100%;
+  background: linear-gradient(90deg, #bc6c25, #854505);
+  border: none;
+  border-radius: 24px;
+  padding: 18px 0;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #fff6e7;
+  cursor: pointer;
+  box-shadow: 6px 8px 22px rgba(140, 90, 20, 0.7), inset 0 -5px 20px #d98126cc;
+  user-select: none;
+  transition: box-shadow 0.3s ease, background 0.3s ease;
+}
+
+button#cancelBtn:hover {
+  box-shadow: 7px 12px 34px rgba(176, 112, 33, 0.85);
+  background: linear-gradient(90deg, #a35203, #c4852f 70%);
+}
+
 /* Message */
 .message {
   margin-top: 1.4rem;
