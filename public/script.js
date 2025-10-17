@@ -208,6 +208,9 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// Store mocks globally for test functionality
+let allMocks = [];
+
 // Load all mocks
 async function loadMocks() {
   mocksList.innerHTML = '<p class="loading">Loading mocks...</p>';
@@ -220,6 +223,9 @@ async function loadMocks() {
     }
     
     const mocks = await resp.json();
+    
+    // Store globally for testing
+    allMocks = mocks;
     
     if (mocks.length === 0) {
       mocksList.innerHTML = '<p class="empty">No mocks created yet. Create your first mock!</p>';
@@ -235,22 +241,7 @@ async function loadMocks() {
       grouped[mock.apiName].push(mock);
     });
     
-    // Check if mocks are from external source
-    const isExternal = mocks.length > 0 && mocks[0]._source === 'external';
-    const isReadOnly = mocks.length > 0 && mocks[0]._isReadOnly;
-    
-    let html = '';
-    
-    // Add info banner if in external mode
-    if (isExternal) {
-      html += `
-        <div class="info-banner external-mode">
-          <strong>External Mode Active</strong> - Showing mocks currently serving from GitHub. 
-        </div>
-      `;
-    }
-    
-    html += '<div class="mocks-grid">';
+    let html = '<div class="mocks-grid">';
     
     Object.keys(grouped).sort().forEach(apiName => {
       const apiMocks = grouped[apiName];
@@ -284,17 +275,16 @@ async function loadMocks() {
         const latencyClass = latency === 0 ? 'instant' : latency < 200 ? 'fast' : latency > 1000 ? 'slow' : '';
         const latencyBadge = `<span class="latency-badge ${latencyClass}">${latency}ms</span>`;
         
-        // Add source badge if from external
-        const sourceBadge = mock._source === 'external' 
-          ? '<span class="source-badge external">GitHub</span>' 
-          : '';
-        
         // Show Test-only for external mocks, full actions for MongoDB mocks
         const isExternalMock = mock._source === 'external';
+        
+        // Store mock index for testing (avoids ID issues with external mocks)
+        const mockIndex = mocks.findIndex(m => m.apiName === mock.apiName && JSON.stringify(m.predicate) === JSON.stringify(mock.predicate));
+        
         const actionButtons = isExternalMock 
-          ? `<button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>`
+          ? `<button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>`
           : `
-              <button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>
+              <button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>
               <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
               <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
               <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
@@ -307,7 +297,6 @@ async function loadMocks() {
               <span class="variant-method">${method}</span>
               ${latencyBadge}
               <span class="variant-predicate">${predicateStr}</span>
-              ${sourceBadge}
             </div>
             <div class="variant-actions">
               ${actionButtons}
@@ -1080,16 +1069,15 @@ const testResultContent = document.getElementById('testResultContent');
 
 let currentTestMock = null;
 
-async function testMock(mockId, apiName, method) {
+// Test mock using index (works for both MongoDB and external mocks)
+window.testMockByIndex = async function(mockIndex, apiName, method) {
   try {
-    // Fetch mock details
-    const resp = await fetch(`/api/mocks/${mockId}`);
-    if (!resp.ok) {
-      showError('Failed to load mock details');
+    if (mockIndex < 0 || mockIndex >= allMocks.length) {
+      showError('Mock not found');
       return;
     }
     
-    const mock = await resp.json();
+    const mock = allMocks[mockIndex];
     currentTestMock = mock;
     
     // Show modal
@@ -1133,7 +1121,7 @@ async function testMock(mockId, apiName, method) {
   } catch (err) {
     showError('Error opening test modal: ' + err.message);
   }
-}
+};
 
 closeTest.addEventListener('click', () => {
   testModal.style.display = 'none';
