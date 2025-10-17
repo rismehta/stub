@@ -765,6 +765,67 @@ button#cancelBtn:hover {
   color: #721c24;
 }
 
+/* Variant Predicate Badge */
+.variant-predicate {
+  display: inline-block;
+  padding: 0.25rem 0.7rem;
+  margin-left: 0.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+  text-transform: capitalize;
+}
+
+/* Source Badge */
+.source-badge {
+  display: inline-block;
+  padding: 0.25rem 0.7rem;
+  margin-left: 0.5rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.source-badge.external {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  color: white;
+  box-shadow: 0 2px 4px rgba(255, 107, 107, 0.25);
+}
+
+/* Info Banner */
+.info-banner {
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.info-banner.external-mode {
+  background: linear-gradient(135deg, #fff5f5 0%, #ffe5e5 100%);
+  border: 2px solid #ff6b6b;
+  color: #c92a2a;
+}
+
+/* Read-only variant styling */
+.variant-item.read-only {
+  opacity: 0.85;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+/* Disabled button styles */
+button[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+  pointer-events: none;
+}
+
 /* Test Button */
 .btn-test {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);

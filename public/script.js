@@ -235,7 +235,22 @@ async function loadMocks() {
       grouped[mock.apiName].push(mock);
     });
     
-    let html = '<div class="mocks-grid">';
+    // Check if mocks are from external source
+    const isExternal = mocks.length > 0 && mocks[0]._source === 'external';
+    const isReadOnly = mocks.length > 0 && mocks[0]._isReadOnly;
+    
+    let html = '';
+    
+    // Add info banner if in external mode
+    if (isExternal) {
+      html += `
+        <div class="info-banner external-mode">
+          <strong>External Mode Active</strong> - Showing mocks currently serving from GitHub. 
+        </div>
+      `;
+    }
+    
+    html += '<div class="mocks-grid">';
     
     Object.keys(grouped).sort().forEach(apiName => {
       const apiMocks = grouped[apiName];
@@ -269,10 +284,21 @@ async function loadMocks() {
         const latencyClass = latency === 0 ? 'instant' : latency < 200 ? 'fast' : latency > 1000 ? 'slow' : '';
         const latencyBadge = `<span class="latency-badge ${latencyClass}">${latency}ms</span>`;
         
-        // Handle responseBody safely (could be undefined, null, or empty object)
-        const responsePreview = mock.responseBody 
-          ? JSON.stringify(mock.responseBody).substring(0, 50) 
-          : '{}';
+        // Add source badge if from external
+        const sourceBadge = mock._source === 'external' 
+          ? '<span class="source-badge external">GitHub</span>' 
+          : '';
+        
+        // Show Test-only for external mocks, full actions for MongoDB mocks
+        const isExternalMock = mock._source === 'external';
+        const actionButtons = isExternalMock 
+          ? `<button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>`
+          : `
+              <button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>
+              <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
+              <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
+              <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
+            `;
         
         html += `
           <div class="variant-item">
@@ -281,13 +307,10 @@ async function loadMocks() {
               <span class="variant-method">${method}</span>
               ${latencyBadge}
               <span class="variant-predicate">${predicateStr}</span>
-              <span class="variant-response">${responsePreview}...</span>
+              ${sourceBadge}
             </div>
             <div class="variant-actions">
-              <button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>
-              <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
-              <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
-              <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
+              ${actionButtons}
             </div>
           </div>
         `;
@@ -462,12 +485,11 @@ document.getElementById('exportAllToZip').addEventListener('click', async () => 
             query: {}
           },
           responseHeaders: mock.responseHeaders || {},
-          responseBody: mock.responseBody || {},
-          responseType: mock.responseType || 'static'
+          responseBody: mock.responseBody || {}
         };
         
-        // Add responseFunction if dynamic
-        if (mock.responseType === 'dynamic' && mock.responseFunction) {
+        // Add responseFunction if present (auto-detects dynamic vs static)
+        if (mock.responseFunction && mock.responseFunction.trim() !== '') {
           cleanMock.responseFunction = mock.responseFunction;
         }
         

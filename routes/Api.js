@@ -655,8 +655,33 @@ router.post('/debug/testMock/:apiName', async (req, res) => {
 // GET all mocks
 router.get('/mocks', async (req, res) => {
   try {
+    const loadFromExternal = true;
+    
+    if (loadFromExternal) {
+      // When using external mode, fetch from GitHub (what's actually serving)
+      console.log('Fetching mocks from external source for UI display');
+      const externalMocks = await fetchMocksFromExternal();
+      
+      // Return external mocks with indicator that they're from external source
+      const mocksWithSource = externalMocks.map(mock => ({
+        ...mock,
+        _id: mock._metadata?.sourceFile || mock.apiName, // Use sourceFile as ID since they don't have MongoDB _id
+        _source: 'external',
+        _isReadOnly: true // Indicate these can't be edited via UI
+      }));
+      
+      return res.json(mocksWithSource);
+    }
+    
+    // Default: Load from MongoDB
     const mocks = await ApiMock.find({}).sort({ apiName: 1, createdAt: -1 });
-    res.json(mocks);
+    const mocksWithSource = mocks.map(mock => ({
+      ...mock.toObject(),
+      _source: 'mongodb',
+      _isReadOnly: false
+    }));
+    
+    res.json(mocksWithSource);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch mocks' });
