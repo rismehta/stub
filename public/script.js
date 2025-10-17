@@ -98,6 +98,7 @@ form.addEventListener('submit', async (e) => {
   const businessName = document.getElementById('businessName').value.trim();
   const apiName = document.getElementById('apiName').value.trim();
   const method = document.getElementById('method').value || 'POST';
+  const latencyMs = parseInt(document.getElementById('latencyMs').value) || 200;
   const predicateRequestText = document.getElementById('predicateRequest').value.trim();
   const predicateHeadersText = document.getElementById('predicateHeaders').value.trim();
   const predicateQueryText = document.getElementById('predicateQuery').value.trim();
@@ -153,6 +154,7 @@ form.addEventListener('submit', async (e) => {
     businessName,
     apiName,
     method,
+    latencyMs,
     predicate: {
       request: predicateRequest,
       headers: predicateHeaders,
@@ -244,9 +246,9 @@ async function loadMocks() {
         <div class="mock-card">
           <div class="mock-header">
             <h3>${displayPath}</h3>
-            <span class="mock-count">${apiMocks.length} stub${apiMocks.length > 1 ? 's' : ''}</span>
+            <span class="mock-count">${apiMocks.length} variant${apiMocks.length > 1 ? 's' : ''}</span>
           </div>
-          <div class="mock-stubs">
+          <div class="mock-variants">
       `;
       
       apiMocks.forEach(mock => {
@@ -260,7 +262,12 @@ async function loadMocks() {
         const predicateStr = predicateInfo.length > 0 ? predicateInfo.join(' + ') : 'Any Request';
         
         const method = mock.method || 'POST';
-        const businessName = mock.businessName ? `<span class="stub-business-name">${mock.businessName}</span>` : '';
+        const businessName = mock.businessName ? `<span class="variant-business-name">${mock.businessName}</span>` : '';
+        
+        // Latency badge
+        const latency = mock.latencyMs !== undefined ? mock.latencyMs : 200;
+        const latencyClass = latency === 0 ? 'instant' : latency < 200 ? 'fast' : latency > 1000 ? 'slow' : '';
+        const latencyBadge = `<span class="latency-badge ${latencyClass}">${latency}ms</span>`;
         
         // Handle responseBody safely (could be undefined, null, or empty object)
         const responsePreview = mock.responseBody 
@@ -268,14 +275,15 @@ async function loadMocks() {
           : '{}';
         
         html += `
-          <div class="stub-item">
-            <div class="stub-info">
+          <div class="variant-item">
+            <div class="variant-info">
               ${businessName}
-              <span class="stub-method">${method}</span>
-              <span class="stub-predicate">${predicateStr}</span>
-              <span class="stub-response">${responsePreview}...</span>
+              <span class="variant-method">${method}</span>
+              ${latencyBadge}
+              <span class="variant-predicate">${predicateStr}</span>
+              <span class="variant-response">${responsePreview}...</span>
             </div>
-            <div class="stub-actions">
+            <div class="variant-actions">
               <button class="btn-test" onclick="testMock('${mock._id}', '${apiName}', '${method}')">Test</button>
               <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
               <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
@@ -322,7 +330,7 @@ document.getElementById('exportAllMocks').addEventListener('click', async () => 
     
     // Prepare data for Excel
     const data = [
-      ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body']
+      ['Business Name', 'API Path', 'HTTP Method', 'Latency (ms)', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body']
     ];
     
     mocks.forEach(mock => {
@@ -330,6 +338,7 @@ document.getElementById('exportAllMocks').addEventListener('click', async () => 
         mock.businessName || '',
         mock.apiName || '',
         mock.method || 'POST',
+        mock.latencyMs !== undefined ? mock.latencyMs : 0,
         truncateCell(mock.predicate?.headers || {}),
         truncateCell(mock.predicate?.query || {}),
         truncateCell(mock.predicate?.request || {}),
@@ -360,6 +369,133 @@ document.getElementById('exportAllMocks').addEventListener('click', async () => 
   }
 });
 
+// Export all mocks to ZIP (individual JSON files)
+document.getElementById('exportAllToZip').addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/mocks');
+    const mocks = await response.json();
+    
+    if (mocks.length === 0) {
+      showError('No mocks to export');
+      return;
+    }
+    
+    // Create ZIP file
+    const zip = new JSZip();
+    
+    // Helper function to generate semantic filename from API name
+    const generateFilename = (mock, index) => {
+      let filename = '';
+      
+      // Try to use apiName first
+      if (mock.apiName) {
+        filename = mock.apiName
+          .replace(/^API\//, '')  // Remove "API/" prefix
+          .replace(/\//g, '-')     // Replace / with -
+          .replace(/_/g, '-')      // Replace _ with -
+          .replace(/([a-z])([A-Z])/g, '$1-$2')  // Convert camelCase to kebab-case
+          .toLowerCase();
+      } 
+      // Fallback to businessName
+      else if (mock.businessName) {
+        filename = mock.businessName
+          .replace(/[^a-zA-Z0-9]+/g, '-')
+          .toLowerCase();
+      }
+      // Last resort: use index
+      else {
+        filename = `mock-${index + 1}`;
+      }
+      
+      // Remove leading/trailing hyphens
+      filename = filename.replace(/^-+|-+$/g, '');
+      
+      // Add unique suffix if businessName exists (to support multiple variants)
+      if (mock.businessName && mock.businessName.trim()) {
+        const suffix = mock.businessName
+          .replace(/[^a-zA-Z0-9]+/g, '-')
+          .toLowerCase()
+          .substring(0, 20);
+        filename = `${filename}-${suffix}`;
+      }
+      
+      // Add method prefix for clarity
+      const methodPrefix = (mock.method || 'POST').toLowerCase();
+      filename = `${methodPrefix}-${filename}`;
+      
+      return `${filename}.json`;
+    };
+    
+    // Group mocks by API path for folder organization
+    const grouped = {};
+    mocks.forEach(mock => {
+      const apiPath = mock.apiName || 'uncategorized';
+      if (!grouped[apiPath]) {
+        grouped[apiPath] = [];
+      }
+      grouped[apiPath].push(mock);
+    });
+    
+    // Add mocks to ZIP with folder structure
+    let fileIndex = 0;
+    Object.keys(grouped).sort().forEach(apiPath => {
+      const apiMocks = grouped[apiPath];
+      
+      // Create folder name from API path
+      const folderName = apiPath
+        .replace(/^API\//, '')
+        .replace(/\//g, '-')
+        .replace(/_/g, '-')
+        .replace(/([a-z])([A-Z])/g, '$1-$2')
+        .toLowerCase();
+      
+      apiMocks.forEach((mock, idx) => {
+        // Clean mock object for export (remove MongoDB fields)
+        const cleanMock = {
+          businessName: mock.businessName || '',
+          apiName: mock.apiName,
+          method: mock.method || 'POST',
+          latencyMs: mock.latencyMs !== undefined ? mock.latencyMs : 0,
+          predicate: mock.predicate || {
+            request: {},
+            headers: {},
+            query: {}
+          },
+          responseHeaders: mock.responseHeaders || {},
+          responseBody: mock.responseBody || {},
+          responseType: mock.responseType || 'static'
+        };
+        
+        // Add responseFunction if dynamic
+        if (mock.responseType === 'dynamic' && mock.responseFunction) {
+          cleanMock.responseFunction = mock.responseFunction;
+        }
+        
+        // Generate filename
+        const filename = generateFilename(mock, fileIndex++);
+        
+        // Add to ZIP in folder
+        const filePath = apiMocks.length > 1 ? `${folderName}/${filename}` : `${filename}`;
+        zip.file(filePath, JSON.stringify(cleanMock, null, 2));
+      });
+    });
+    
+    // Generate ZIP and download
+    const timestamp = new Date().toISOString().split('T')[0];
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mocks-export-${timestamp}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    showSuccess(`Exported ${mocks.length} mock(s) to ZIP file`);
+  } catch (err) {
+    showError('Error exporting to ZIP: ' + err.message);
+  }
+});
+
 // Edit mock
 window.editMock = async function(id) {
   try {
@@ -376,6 +512,7 @@ window.editMock = async function(id) {
     document.getElementById('businessName').value = mock.businessName || '';
     document.getElementById('apiName').value = mock.apiName;
     document.getElementById('method').value = mock.method || 'POST';
+    document.getElementById('latencyMs').value = mock.latencyMs !== undefined ? mock.latencyMs : 0;
     document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
     document.getElementById('predicateQuery').value = JSON.stringify(mock.predicate?.query || {}, null, 2);
@@ -426,6 +563,7 @@ window.cloneMock = async function(id) {
     document.getElementById('businessName').value = mock.businessName || '';
     document.getElementById('apiName').value = mock.apiName;
     document.getElementById('method').value = mock.method || 'POST';
+    document.getElementById('latencyMs').value = mock.latencyMs !== undefined ? mock.latencyMs : 0;
     document.getElementById('predicateRequest').value = JSON.stringify(mock.predicate?.request || {}, null, 2);
     document.getElementById('predicateHeaders').value = JSON.stringify(mock.predicate?.headers || {}, null, 2);
     document.getElementById('predicateQuery').value = JSON.stringify(mock.predicate?.query || {}, null, 2);
@@ -511,6 +649,7 @@ const COLUMN_PATTERNS = {
   businessName: ['name', 'business name', 'api name', 'description', 'label', 'title', 'action'],
   path: ['path', 'api path', 'endpoint', 'url', 'route', 'api', 'uri'],
   method: ['method', 'http method', 'verb', 'http verb'],
+  latencyMs: ['latency', 'latency (ms)', 'latency ms', 'delay', 'wait', 'response time'],
   request: ['request', 'request body', 'request payload', 'req body', 'request json', 'input', 'req'],
   response: ['response', 'response body', 'response payload', 'res body', 'response json', 'output', 'res'],
   headers: ['headers', 'request headers', 'header', 'http headers'],
@@ -667,6 +806,7 @@ function parseRows(rows) {
       businessName: '',
       path: '',
       method: 'POST',
+      latencyMs: 0,
       request: {},
       response: {},
       headers: {},
@@ -698,6 +838,10 @@ function parseRows(rows) {
         } else {
           transformed.method = 'POST'; // Default
         }
+      } else if (field === 'latencyMs') {
+        // Parse latency as number
+        const latency = parseInt(value) || 0;
+        transformed.latencyMs = Math.max(0, Math.min(30000, latency)); // Clamp between 0-30000
       } else {
         transformed[field] = value || '';
       }
@@ -817,6 +961,7 @@ importSelected.addEventListener('click', async () => {
         businessName: item.businessName || '',
         apiName: item.path.startsWith('/') ? item.path.substring(1) : item.path,
         method: item.method || 'POST',
+        latencyMs: item.latencyMs !== undefined ? parseInt(item.latencyMs) : 0,
         predicate: {
           request: item.request || {},
           headers: item.headers || {},
@@ -869,11 +1014,11 @@ importSelected.addEventListener('click', async () => {
 
 // Template downloads
 document.getElementById('downloadCsvTemplate').addEventListener('click', () => {
-  const csv = `Business Name,API Path,HTTP Method,Request Headers,Query Parameters,Request Body,Response Headers,Response Body
-Admin User Login,/users/login,POST,"{""x-api-key"":""admin-key-123""}","{}","{""username"":""admin""}","{""x-powered-by"":""mock-api""}","{""token"":""admin-123"",""role"":""admin""}"
-Guest User Login,/users/login,POST,"{}","{}","{""username"":""guest""}","{}","{""token"":""guest-456"",""role"":""guest""}"
-Get User Profile,/users/profile,GET,"{""authorization"":""Bearer *""}","{""userId"":""*""}","{}","{""content-type"":""application/json""}","{""name"":""John Doe"",""email"":""john@example.com""}"
-Search Orders,/orders,GET,"{}","{""status"":""pending"",""page"":""*""}","{}","{}","{""orders"":[{""id"":1,""status"":""pending""}]}"`;
+  const csv = `Business Name,API Path,HTTP Method,Latency (ms),Request Headers,Query Parameters,Request Body,Response Headers,Response Body
+Admin User Login,/users/login,POST,200,"{""x-api-key"":""admin-key-123""}","{}","{""username"":""admin""}","{""x-powered-by"":""mock-api""}","{""token"":""admin-123"",""role"":""admin""}"
+Guest User Login,/users/login,POST,0,"{}","{}","{""username"":""guest""}","{}","{""token"":""guest-456"",""role"":""guest""}"
+Get User Profile,/users/profile,GET,100,"{""authorization"":""Bearer *""}","{""userId"":""*""}","{}","{""content-type"":""application/json""}","{""name"":""John Doe"",""email"":""john@example.com""}"
+Search Orders,/orders,GET,500,"{}","{""status"":""pending"",""page"":""*""}","{}","{}","{""orders"":[{""id"":1,""status"":""pending""}]}"`;
   
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -886,11 +1031,11 @@ Search Orders,/orders,GET,"{}","{""status"":""pending"",""page"":""*""}","{}","{
 
 document.getElementById('downloadXlsxTemplate').addEventListener('click', () => {
   const data = [
-    ['Business Name', 'API Path', 'HTTP Method', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body'],
-    ['Admin User Login', '/users/login', 'POST', '{"x-api-key":"admin-key-123"}', '{}', '{"username":"admin"}', '{"x-powered-by":"mock-api"}', '{"token":"admin-123","role":"admin"}'],
-    ['Guest User Login', '/users/login', 'POST', '{}', '{}', '{"username":"guest"}', '{}', '{"token":"guest-456","role":"guest"}'],
-    ['Get User Profile', '/users/profile', 'GET', '{"authorization":"Bearer *"}', '{"userId":"*"}', '{}', '{"content-type":"application/json"}', '{"name":"John Doe","email":"john@example.com"}'],
-    ['Search Orders', '/orders', 'GET', '{}', '{"status":"pending","page":"*"}', '{}', '{}', '{"orders":[{"id":1,"status":"pending"}]}']
+    ['Business Name', 'API Path', 'HTTP Method', 'Latency (ms)', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body'],
+    ['Admin User Login', '/users/login', 'POST', 200, '{"x-api-key":"admin-key-123"}', '{}', '{"username":"admin"}', '{"x-powered-by":"mock-api"}', '{"token":"admin-123","role":"admin"}'],
+    ['Guest User Login', '/users/login', 'POST', 0, '{}', '{}', '{"username":"guest"}', '{}', '{"token":"guest-456","role":"guest"}'],
+    ['Get User Profile', '/users/profile', 'GET', 100, '{"authorization":"Bearer *"}', '{"userId":"*"}', '{}', '{"content-type":"application/json"}', '{"name":"John Doe","email":"john@example.com"}'],
+    ['Search Orders', '/orders', 'GET', 500, '{}', '{"status":"pending","page":"*"}', '{}', '{}', '{"orders":[{"id":1,"status":"pending"}]}']
   ];
   
   const ws = XLSX.utils.aoa_to_sheet(data);

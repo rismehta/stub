@@ -705,7 +705,7 @@ button#cancelBtn:hover {
   line-height: 1.4;
 }
 
-.stub-method {
+.variant-method {
   display: inline-block;
   font-size: 0.75rem;
   font-weight: 700;
@@ -717,24 +717,52 @@ button#cancelBtn:hover {
   text-transform: uppercase;
 }
 
-.stub-method[data-method="GET"] {
+.variant-method[data-method="GET"] {
   background: #16a34a;
 }
 
-.stub-method[data-method="POST"] {
+.variant-method[data-method="POST"] {
   background: #2563eb;
 }
 
-.stub-method[data-method="PUT"] {
+.variant-method[data-method="PUT"] {
   background: #ea580c;
 }
 
-.stub-method[data-method="DELETE"] {
+.variant-method[data-method="DELETE"] {
   background: #dc2626;
 }
 
-.stub-method[data-method="PATCH"] {
+.variant-method[data-method="PATCH"] {
   background: #7c3aed;
+}
+
+/* Latency Badge */
+.latency-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  background: #fff3cd;
+  color: #856404;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.latency-badge.instant {
+  background: #d1f4e0;
+  color: #155724;
+}
+
+.latency-badge.fast {
+  background: #d4edda;
+  color: #155724;
+}
+
+.latency-badge.slow {
+  background: #f8d7da;
+  color: #721c24;
 }
 
 /* Test Button */

@@ -75,6 +75,13 @@
           <label for="responseHeaders">Response Headers JSON (Optional)</label>
           <textarea id="responseHeaders" placeholder='e.g., { "x-powered-by": "nodejs" }'></textarea>
 
+          <label for="latencyMs">Response Latency (milliseconds)
+            <span style="color: #888; font-size: 13px; display: block;">
+              <em>Simulates API delay. Default: 200ms | Fast: 50-100ms | Normal: 200-500ms | Slow: 1000-3000ms</em>
+            </span>
+          </label>
+          <input type="number" id="latencyMs" name="latencyMs" placeholder="200" min="0" max="30000" value="200" />
+
           <label for="responseType">Response Type</label>
           <select id="responseType">
             <option value="static" selected>Static (JSON Response)</option>
@@ -128,7 +135,10 @@
       <div id="manageTab" class="tab-content">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
           <h2 style="margin: 0;">Manage Mocks</h2>
-          <button type="button" id="exportAllMocks" class="btn-primary">Export All to Excel</button>
+          <div style="display: flex; gap: 0.75rem;">
+            <button type="button" id="exportAllToZip" class="btn-primary">Export All to ZIP</button>
+            <button type="button" id="exportAllMocks" class="btn-primary">Export All to Excel</button>
+          </div>
         </div>
         <div id="mocksList">
           <p class="loading">Loading mocks...</p>
@@ -179,7 +189,7 @@
     <!-- Test Modal -->
     <div id="testModal" class="modal" style="display:none;">
       <div class="modal-content">
-        <h2>Test Mock Stub</h2>
+        <h2>Test Mock Variant</h2>
         <div id="testMockInfo" class="test-info"></div>
         
         <label>Test Path <span style="color: #888; font-size: 13px;">(e.g., /users/123/profile - no /mock prefix)</span></label>
@@ -208,6 +218,7 @@
   </div>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

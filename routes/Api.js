@@ -9,6 +9,13 @@ const MB_URL = process.env.MB_URL || 'http://localhost:2525';
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 const IMPOSTER_NAME = 'mock-api-imposter';
 
+// External mock repository URL (GitHub raw or AEM Edge Delivery)
+const EXTERNAL_MOCKS_URL = process.env.EXTERNAL_MOCKS_URL || 'https://main--api-virtualization--hdfc-forms.aem.page/mocks.json';
+const EXTERNAL_FUNCTIONS_URL = process.env.EXTERNAL_FUNCTIONS_URL || ' https://main--api-virtualization--hdfc-forms.aem.page/functions.js';
+
+// Store loaded functions from external source
+let loadedFunctions = {};
+
 // Calculate predicate specificity (more fields = more specific)
 function calculateSpecificity(doc) {
   let count = 0;
@@ -153,26 +160,63 @@ function buildStubs(apiMocks) {
       headers['content-type'] = 'application/json';
     }
 
+    // Get latency (default to 200ms if not specified or 0 for no delay)
+    const latencyMs = doc.latencyMs !== undefined ? doc.latencyMs : 0;
+
     const stub = {
       predicates,
       responses: []
     };
 
-    if (doc.responseType === 'dynamic' && doc.responseFunction) {
+    // Auto-detect: if responseFunction is provided, it's dynamic (regardless of responseType)
+    if (doc.responseFunction && doc.responseFunction.trim() !== '') {
+      // Resolve function: check if it's an external function name or inline code
+      let functionCode = null;
+      
+      // Check if responseFunction is a reference to an external function
+      if (loadedFunctions[doc.responseFunction]) {
+        // Use external function by name
+        functionCode = loadedFunctions[doc.responseFunction];
+        console.log(`   Using external function: ${doc.responseFunction}`);
+      } else {
+        // Use inline function code
+        functionCode = doc.responseFunction;
+        console.log(`   Using inline function`);
+      }
+      
       // Use inject for dynamic responses
-      stub.responses.push({
-        inject: doc.responseFunction
-      });
-      console.log(`Dynamic response (inject) for ${doc.apiName}`);
+      const response = {
+        inject: functionCode
+      };
+      
+      // Add latency behavior for dynamic responses
+      if (latencyMs > 0) {
+        response._behaviors = { wait: latencyMs };
+        console.log(`Dynamic response (inject) for ${doc.apiName} with ${latencyMs}ms latency`);
+      } else {
+        console.log(`Dynamic response (inject) for ${doc.apiName}`);
+      }
+      
+      stub.responses.push(response);
     } else {
       // Use is for static responses (default)
-      stub.responses.push({
+      const response = {
         is: {
           statusCode: 200,
           headers: headers,
           body: doc.responseBody
         }
-      });
+      };
+      
+      // Add latency behavior for static responses
+      if (latencyMs > 0) {
+        response._behaviors = { wait: latencyMs };
+        console.log(`Static response for ${doc.apiName} with ${latencyMs}ms latency`);
+      } else {
+        console.log(`Static response for ${doc.apiName}`);
+      }
+      
+      stub.responses.push(response);
     }
 
     return stub;
@@ -214,15 +258,14 @@ router.post('/saveOrUpdate', async (req, res) => {
       return res.status(400).json({ error: 'apiName is required' });
     }
     
-    // Validate based on response type
-    if (responseType === 'dynamic') {
-      if (!responseFunction || responseFunction.trim() === '') {
-        return res.status(400).json({ error: 'responseFunction is required for dynamic responses' });
-      }
-    } else {
-      // responseBody can be empty object {}, just not null/undefined
+    // Auto-detect response type: if responseFunction is provided, it's dynamic
+    // Otherwise it's static and requires responseBody
+    const hasDynamicFunction = responseFunction && responseFunction.trim() !== '';
+    
+    if (!hasDynamicFunction) {
+      // Static response - responseBody is required
       if (responseBody === undefined || responseBody === null) {
-        return res.status(400).json({ error: 'responseBody is required (can be empty object)' });
+        return res.status(400).json({ error: 'responseBody is required for static responses (or provide responseFunction for dynamic)' });
       }
     }
 
@@ -297,6 +340,129 @@ async function reloadAllImposters() {
   return allMocks.length;
 }
 
+// Fetch mocks from external repository (GitHub/AEM)
+async function fetchMocksFromExternal() {
+  try {
+    console.log(`Fetching mocks from: ${EXTERNAL_MOCKS_URL}`);
+    const response = await axios.get(EXTERNAL_MOCKS_URL, {
+      timeout: 10000,
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    const data = response.data;
+    
+    // Validate structure
+    if (!data.mocks || !Array.isArray(data.mocks)) {
+      throw new Error('Invalid mocks.json structure: missing mocks array');
+    }
+    
+    console.log(`Fetched ${data.totalMocks} mock(s) from external source`);
+    console.log(`Generated at: ${data.generatedAt}`);
+    
+    return data.mocks;
+  } catch (err) {
+    console.error('Error fetching external mocks:', err.message);
+    throw err;
+  }
+}
+
+// Fetch and parse functions.js from external repository
+async function fetchFunctionsFromExternal() {
+  try {
+    console.log(`Fetching functions from: ${EXTERNAL_FUNCTIONS_URL}`);
+    const response = await axios.get(EXTERNAL_FUNCTIONS_URL, {
+      timeout: 10000,
+      headers: {
+        'Accept': 'text/plain'
+      }
+    });
+    
+    const functionCode = response.data;
+    
+    // Parse and extract exported functions
+    const functions = parseFunctionsFromCode(functionCode);
+    
+    console.log(` Loaded ${Object.keys(functions).length} function(s) from external source`);
+    console.log(`   Functions available: ${Object.keys(functions).join(', ')}`);
+    
+    return functions;
+  } catch (err) {
+    // If functions.js doesn't exist, just log warning and continue
+    if (err.response && err.response.status === 404) {
+      console.log('No functions.js found (optional file)');
+      return {};
+    }
+    console.error('Error fetching external functions:', err.message);
+    throw err;
+  }
+}
+
+// Parse functions from JS code and extract exports
+function parseFunctionsFromCode(code) {
+  const functions = {};
+  
+  try {
+    // Create a sandbox to evaluate the code safely
+    // The code should use module.exports or exports to export functions
+    const sandbox = {
+      module: { exports: {} },
+      exports: {},
+      console: console
+    };
+    
+    // Wrap code in a function to isolate scope
+    const wrappedCode = `
+      (function(module, exports) {
+        ${code}
+        return module.exports;
+      })
+    `;
+    
+    // Evaluate the code
+    const evalFunc = eval(wrappedCode);
+    const exportedFunctions = evalFunc(sandbox.module, sandbox.exports);
+    
+    // Extract all exported functions
+    for (const [name, func] of Object.entries(exportedFunctions)) {
+      if (typeof func === 'function') {
+        // Convert function to string for Mountebank injection
+        functions[name] = func.toString();
+        console.log(`   Loaded function: ${name}`);
+      }
+    }
+    
+    return functions;
+  } catch (err) {
+    console.error('Error parsing functions:', err.message);
+    throw new Error(`Failed to parse functions.js: ${err.message}`);
+  }
+}
+
+// Load mocks from external source and reload Mountebank
+async function reloadFromExternal() {
+  // Fetch both mocks and functions in parallel
+  const [externalMocks, externalFunctions] = await Promise.all([
+    fetchMocksFromExternal(),
+    fetchFunctionsFromExternal()
+  ]);
+  
+  // Store functions globally for use in buildStubs
+  loadedFunctions = externalFunctions;
+  
+  // Option 1: Just load into Mountebank (ephemeral)
+  console.log(`Loading ${externalMocks.length} external mocks into Mountebank`);
+  await upsertImposter(externalMocks);
+  
+  
+  return {
+    mocksLoaded: externalMocks.length,
+    functionsLoaded: Object.keys(externalFunctions).length,
+    mongoImport: null
+  };
+}
+
 router.post('/reloadAllImposters', async (req, res) => {
   try {
     const count = await reloadAllImposters();
@@ -304,6 +470,139 @@ router.post('/reloadAllImposters', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to reload imposters' });
+  }
+});
+
+// Reload from external repository (GitHub/AEM)
+// North Star: Pure ephemeral mode - no MongoDB persistence
+router.post('/reloadFromExternal', async (req, res) => {
+  try {
+    const results = await reloadFromExternal();
+    
+    res.json({
+      message: 'Mocks loaded from external source (ephemeral, not persisted)',
+      url: EXTERNAL_MOCKS_URL,
+      ...results
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ 
+      error: 'Failed to reload from external source',
+      details: err.message 
+    });
+  }
+});
+
+// Get external mocks info (without loading)
+router.get('/externalMocks/info', async (req, res) => {
+  try {
+    const mocks = await fetchMocksFromExternal();
+    res.json({
+      url: EXTERNAL_MOCKS_URL,
+      totalMocks: mocks.length,
+      mocks: mocks.map(m => ({
+        businessName: m.businessName,
+        apiName: m.apiName,
+        method: m.method || 'POST'
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ 
+      error: 'Failed to fetch external mocks info',
+      details: err.message 
+    });
+  }
+});
+
+// Fetch and return all external mocks (full data)
+router.get('/externalMocks', async (req, res) => {
+  try {
+    const mocks = await fetchMocksFromExternal();
+    res.json(mocks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ 
+      error: 'Failed to fetch external mocks',
+      details: err.message 
+    });
+  }
+});
+
+// Get currently loaded functions from external source
+router.get('/externalFunctions', async (req, res) => {
+  try {
+    res.json({
+      url: EXTERNAL_FUNCTIONS_URL,
+      totalFunctions: Object.keys(loadedFunctions).length,
+      functions: Object.keys(loadedFunctions).map(name => ({
+        name,
+        codePreview: loadedFunctions[name].substring(0, 100) + '...'
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ 
+      error: 'Failed to get loaded functions',
+      details: err.message 
+    });
+  }
+});
+
+// Webhook endpoint for GitHub to trigger reload automatically
+// GitHub calls this when mocks.json is updated
+router.post('/webhook/github-mocks-updated', async (req, res) => {
+  try {
+    console.log('Webhook received: GitHub mocks updated');
+    
+    // Optional: Verify webhook signature for security
+    // const signature = req.headers['x-hub-signature-256'];
+    // if (!verifyGitHubSignature(signature, req.body)) {
+    //   return res.status(401).json({ error: 'Invalid signature' });
+    // }
+    
+    // Check if mocks.json or functions.js was actually changed
+    const commits = req.body.commits || [];
+    const mocksJsonChanged = commits.some(commit => 
+      (commit.added || []).includes('mocks.json') ||
+      (commit.modified || []).includes('mocks.json')
+    );
+    const functionsJsChanged = commits.some(commit => 
+      (commit.added || []).includes('functions.js') ||
+      (commit.modified || []).includes('functions.js')
+    );
+    
+    if (!mocksJsonChanged && !functionsJsChanged) {
+      console.log('   No changes to mocks.json or functions.js, skipping reload');
+      return res.json({ 
+        message: 'Webhook received but mocks.json/functions.js not changed',
+        skipped: true 
+      });
+    }
+    
+    if (mocksJsonChanged) {
+      console.log('   mocks.json changed');
+    }
+    if (functionsJsChanged) {
+      console.log('   functions.js changed');
+    }
+    
+    console.log('   Reloading mocks from external source...');
+    const results = await reloadFromExternal(false); // Never persist to MongoDB
+    
+    console.log(`Webhook: Successfully reloaded ${results.mocksLoaded} mocks`);
+    
+    res.json({
+      message: 'Mocks reloaded successfully',
+      trigger: 'github-webhook',
+      ...results
+    });
+  } catch (err) {
+    console.error('Webhook error:', err);
+    res.status(500).json({ 
+      error: 'Webhook processing failed',
+      details: err.message 
+    });
   }
 });
 
@@ -473,3 +772,4 @@ router.post('/import/batch', async (req, res) => {
 
 module.exports = router;
 module.exports.reloadAllImposters = reloadAllImposters;
+module.exports.reloadFromExternal = reloadFromExternal;

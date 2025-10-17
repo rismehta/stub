@@ -8,7 +8,7 @@ const path = require('path');
 const axios = require('axios');
 
 const apiRoutes = require('./routes/Api');
-const { reloadAllImposters } = require('./routes/Api');
+const { reloadAllImposters, reloadFromExternal } = require('./routes/Api');
 
 const app = express();
 
@@ -111,13 +111,36 @@ mongoose.connect(MONGODB_URI)
   app.listen(PORT, async () => {
     console.log(`Backend server running on port ${PORT}`);
     
-    // Auto-reload all imposters from database on startup
-    console.log('Auto-reloading all mocks from database...');
-    try {
-      const count = await reloadAllImposters();
-      console.log(`✅ Successfully reloaded ${count} mocks into Mountebank on startup`);
-    } catch (err) {
-      console.error('❌ Error reloading imposters on startup:', err.message);
+    // Check if should load from external source or MongoDB
+    const loadFromExternal = true; // todo: can be configured
+    
+    if (loadFromExternal) {
+      // Load from external repository (GitHub/AEM) - EPHEMERAL MODE
+      // North Star: No MongoDB persistence, mocks loaded directly from external source
+      console.log('Auto-loading mocks from external repository (ephemeral mode)...');
+      try {
+        const results = await reloadFromExternal(false); // ← Never persist to MongoDB
+        console.log(`✅ Successfully loaded ${results.mocksLoaded} mocks from external source`);
+        console.log('   (Loaded to Mountebank in-memory only, not persisted to MongoDB)');
+      } catch (err) {
+        console.error('❌ Error loading from external:', err.message);
+        console.log('Falling back to MongoDB...');
+        try {
+          const count = await reloadAllImposters();
+          console.log(`✅ Loaded ${count} mocks from MongoDB (fallback)`);
+        } catch (fallbackErr) {
+          console.error('❌ Fallback also failed:', fallbackErr.message);
+        }
+      }
+    } else {
+      // Load from MongoDB (default)
+      console.log('Auto-reloading all mocks from database...');
+      try {
+        const count = await reloadAllImposters();
+        console.log(`✅ Successfully reloaded ${count} mocks into Mountebank on startup`);
+      } catch (err) {
+        console.error('❌ Error reloading imposters on startup:', err.message);
+      }
     }
   });
 })

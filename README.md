@@ -586,6 +586,318 @@ Query: { "page": "*", "limit": "*" }  // Any page/limit works
 
 ---
 
+## 🎭 Dynamic Mocks & External Functions
+
+For advanced scenarios requiring conditional logic, random data, or stateful behavior, use **dynamic mocks with external functions**.
+
+### Static vs Dynamic Mocks
+
+| Type | When to Use | Example |
+|------|-------------|---------|
+| **Static** | Fixed response, no logic | Return same JSON every time |
+| **Dynamic** | Conditional logic, randomness, state | Different response based on input |
+
+### Why External Functions?
+
+✅ **Maintainable** - Proper `.js` file with syntax highlighting  
+✅ **Reusable** - Share functions across multiple mocks  
+✅ **Testable** - Easier to debug and test  
+✅ **Clean** - No inline code cluttering JSON
+
+### Setting Up External Functions
+
+**1. Create `functions.js` in GitHub Repository**
+
+```javascript
+// functions.js in api-virtualization repo
+module.exports = {
+  // Example: Dynamic loan status
+  dynamicLoanStatus: function(request) {
+    const body = JSON.parse(request.body);
+    const loanId = body.loanId || 'UNKNOWN';
+    
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        loanId: loanId,
+        status: 'APPROVED',
+        amount: Math.floor(Math.random() * 100000) + 50000,
+        timestamp: new Date().toISOString()
+      })
+    };
+  },
+
+  // Example: Conditional auth
+  conditionalAuth: function(request) {
+    const token = request.headers['authorization'];
+    
+    if (!token || token === 'Bearer invalid') {
+      return {
+        statusCode: 401,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Unauthorized' })
+      };
+    }
+    
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        status: 'authenticated',
+        timestamp: new Date().toISOString()
+      })
+    };
+  },
+
+  // Example: Simulate failures
+  unreliableService: function(request) {
+    const random = Math.random();
+    
+    // 10% chance of error
+    if (random < 0.1) {
+      return {
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Service unavailable' })
+      };
+    }
+    
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'success' })
+    };
+  }
+};
+```
+
+**2. Reference Function in `mocks.json`**
+
+```json
+{
+  "businessName": "Dynamic Loan Status",
+  "apiName": "loans/status",
+  "method": "POST",
+  "responseFunction": "dynamicLoanStatus",
+  "predicate": {
+    "request": {},
+    "headers": {},
+    "query": {}
+  },
+  "responseHeaders": {},
+  "responseBody": {}
+}
+```
+
+**Note:** 
+- Simply add `responseFunction` - system automatically detects it's dynamic (no need for `responseType`) ✨
+- `responseFunction` can be either:
+  - **Function name** (e.g., `"dynamicLoanStatus"`) - References function in `functions.js` ✅ **Recommended**
+  - **Inline code** (e.g., `"function(request){...}"`) - Legacy support ⚠️ Not recommended
+
+**3. System Automatically:**
+- Fetches `functions.js` from GitHub
+- Parses and loads all exported functions
+- Detects if `responseFunction` is a function name or inline code
+- Injects function code into Mountebank
+
+### Function Signature
+
+All response functions receive a `request` object and must return a response object:
+
+```javascript
+function myResponseFunction(request) {
+  // Available request properties:
+  // - request.method    : HTTP method (GET, POST, etc.)
+  // - request.path      : Request path
+  // - request.query     : Query parameters (object)
+  // - request.headers   : Request headers (object)
+  // - request.body      : Request body (string, parse if JSON)
+  
+  return {
+    statusCode: 200,              // HTTP status code
+    headers: {                    // Response headers
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({...})   // Response body (MUST be string)
+  };
+}
+```
+
+### Configuration
+
+Set environment variables to configure external sources:
+
+```bash
+# URL to mocks.json in GitHub
+EXTERNAL_MOCKS_URL=https://raw.githubusercontent.com/rismehta/api-virtualization/main/mocks.json
+
+# URL to functions.js in GitHub
+EXTERNAL_FUNCTIONS_URL=https://raw.githubusercontent.com/rismehta/api-virtualization/main/functions.js
+
+# Auto-load from external on startup (ephemeral mode)
+LOAD_FROM_EXTERNAL=true
+```
+
+### Use Cases
+
+#### 1. Conditional Responses Based on Input
+
+```javascript
+function userByRole(request) {
+  const body = JSON.parse(request.body);
+  
+  if (body.role === 'admin') {
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        permissions: ['read', 'write', 'delete'],
+        level: 'superuser'
+      })
+    };
+  }
+  
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      permissions: ['read'],
+      level: 'basic'
+    })
+  };
+}
+```
+
+#### 2. Random/Variable Data
+
+```javascript
+function randomOrderStatus(request) {
+  const statuses = ['pending', 'processing', 'shipped', 'delivered'];
+  const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
+  
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      orderId: JSON.parse(request.body).orderId,
+      status: randomStatus,
+      timestamp: new Date().toISOString()
+    })
+  };
+}
+```
+
+#### 3. Stateful Behavior
+
+```javascript
+let requestCount = 0;
+
+function rateLimiter(request) {
+  requestCount++;
+  
+  if (requestCount > 100) {
+    return {
+      statusCode: 429,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        error: 'Rate limit exceeded',
+        retryAfter: 60
+      })
+    };
+  }
+  
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      status: 'success',
+      remaining: 100 - requestCount
+    })
+  };
+}
+```
+
+#### 4. Header-Based Logic
+
+```javascript
+function apiVersionRouter(request) {
+  const version = request.headers['api-version'] || '1.0';
+  
+  if (version === '2.0') {
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        format: 'v2',
+        data: { newField: 'value' }
+      })
+    };
+  }
+  
+  // Default to v1
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      format: 'v1',
+      data: { oldField: 'value' }
+    })
+  };
+}
+```
+
+### GitHub Webhook Integration
+
+The system supports automatic reload when `functions.js` or `mocks.json` changes:
+
+**1. Set up webhook in GitHub:**
+- Go to repo Settings → Webhooks → Add webhook
+- Payload URL: `https://your-backend.onrender.com/api/webhook/github-mocks-updated`
+- Content type: `application/json`
+- Events: `push`
+
+**2. System automatically:**
+- Receives webhook on push to `main`
+- Checks if `mocks.json` or `functions.js` changed
+- Reloads both files and updates Mountebank
+
+### External vs Inline Functions
+
+The `responseFunction` field supports both approaches:
+
+| Approach | Value | Pros | Cons | Recommended |
+|----------|-------|------|------|-------------|
+| **External function** | Function name<br>(e.g., `"dynamicLoanStatus"`) | ✅ Maintainable<br>✅ Reusable<br>✅ Testable<br>✅ Syntax highlighting | - | ✅ **Use this** |
+| **Inline code** | Full function code<br>(e.g., `"function(request){...}"`) | ✅ Legacy support | ❌ Hard to maintain<br>❌ No syntax highlighting<br>❌ Not reusable | ⚠️ Avoid |
+
+### Debugging
+
+**Check loaded functions:**
+```bash
+curl https://your-backend.onrender.com/api/externalFunctions
+```
+
+**Response:**
+```json
+{
+  "url": "https://raw.githubusercontent.com/.../functions.js",
+  "totalFunctions": 5,
+  "functions": [
+    { "name": "dynamicLoanStatus", "codePreview": "function(request) {...)" },
+    { "name": "conditionalAuth", "codePreview": "function(request) {...)" }
+  ]
+}
+```
+
+**Reload manually:**
+```bash
+curl -X POST https://your-backend.onrender.com/api/reloadFromExternal
+```
+
+---
+
 ## 🛠️ Tech Stack
 
 | Component | Technology |
@@ -611,6 +923,11 @@ Query: { "page": "*", "limit": "*" }  // Any page/limit works
 | POST | `/api/saveOrUpdate` | Create or update mock |
 | DELETE | `/api/mocks/:id` | Delete mock |
 | POST | `/api/reloadAllImposters` | Reload all mocks into Mountebank |
+| POST | `/api/reloadFromExternal` | Reload mocks from external GitHub repository |
+| GET | `/api/externalMocks` | Fetch mocks from external source (without loading) |
+| GET | `/api/externalMocks/info` | Get info about external mocks |
+| GET | `/api/externalFunctions` | Get info about loaded external functions |
+| POST | `/api/webhook/github-mocks-updated` | GitHub webhook endpoint for auto-reload |
 
 ### Debug Endpoints
 
@@ -822,3 +1139,4 @@ MIT License - feel free to use this in your projects!
 ---
 
 **Built with ❤️ for developers who need reliable mock APIs**
+# api-virtualization
