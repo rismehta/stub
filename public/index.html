@@ -77,10 +77,10 @@
 
           <label for="latencyMs">Response Latency (milliseconds)
             <span style="color: #888; font-size: 13px; display: block;">
-              <em>Simulates API delay. Default: 200ms | Fast: 50-100ms | Normal: 200-500ms | Slow: 1000-3000ms</em>
+              <em>Simulates API delay. Default: 0ms (instant) | Fast: 50-100ms | Normal: 200-500ms | Slow: 1000-3000ms</em>
             </span>
           </label>
-          <input type="number" id="latencyMs" name="latencyMs" placeholder="200" min="0" max="30000" value="200" />
+          <input type="number" id="latencyMs" name="latencyMs" placeholder="0" min="0" max="30000" value="0" />
 
           <label for="responseType">Response Type</label>
           <select id="responseType">
@@ -136,8 +136,7 @@
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
           <h2 style="margin: 0;">Manage Mocks</h2>
           <div style="display: flex; gap: 0.75rem;">
-            <button type="button" id="exportAllToZip" class="btn-primary">Export All to ZIP</button>
-            <button type="button" id="exportAllMocks" class="btn-primary">Export All to Excel</button>
+            <button type="button" id="exportMongoDBMocks" class="btn-primary">Export MongoDB Mocks (JSON)</button>
           </div>
         </div>
         <div id="mocksList">

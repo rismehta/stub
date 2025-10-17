@@ -98,7 +98,7 @@ form.addEventListener('submit', async (e) => {
   const businessName = document.getElementById('businessName').value.trim();
   const apiName = document.getElementById('apiName').value.trim();
   const method = document.getElementById('method').value || 'POST';
-  const latencyMs = parseInt(document.getElementById('latencyMs').value) || 200;
+  const latencyMs = parseInt(document.getElementById('latencyMs').value) || 0;
   const predicateRequestText = document.getElementById('predicateRequest').value.trim();
   const predicateHeadersText = document.getElementById('predicateHeaders').value.trim();
   const predicateQueryText = document.getElementById('predicateQuery').value.trim();
@@ -271,7 +271,7 @@ async function loadMocks() {
         const businessName = mock.businessName ? `<span class="variant-business-name">${mock.businessName}</span>` : '';
         
         // Latency badge
-        const latency = mock.latencyMs !== undefined ? mock.latencyMs : 200;
+        const latency = mock.latencyMs !== undefined ? mock.latencyMs : 0;
         const latencyClass = latency === 0 ? 'instant' : latency < 200 ? 'fast' : latency > 1000 ? 'slow' : '';
         const latencyBadge = `<span class="latency-badge ${latencyClass}">${latency}ms</span>`;
         
@@ -319,76 +319,17 @@ async function loadMocks() {
   }
 }
 
-// Export all mocks to Excel
-document.getElementById('exportAllMocks').addEventListener('click', async () => {
+// Export MongoDB mocks to ZIP (individual JSON files) - excludes external mocks
+document.getElementById('exportMongoDBMocks').addEventListener('click', async () => {
   try {
     const response = await fetch('/api/mocks');
-    const mocks = await response.json();
+    const allMocksData = await response.json();
+    
+    // Filter to only MongoDB mocks (exclude external/GitHub mocks)
+    const mocks = allMocksData.filter(mock => mock._source !== 'external');
     
     if (mocks.length === 0) {
-      showError('No mocks to export');
-      return;
-    }
-    
-    // Helper function to truncate large values (Excel cell limit is 32767 characters)
-    const truncateCell = (value, maxLength = 32000) => {
-      if (!value) return '';
-      const str = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-      if (str.length > maxLength) {
-        return str.substring(0, maxLength) + '... [TRUNCATED]';
-      }
-      return str;
-    };
-    
-    // Prepare data for Excel
-    const data = [
-      ['Business Name', 'API Path', 'HTTP Method', 'Latency (ms)', 'Request Headers', 'Query Parameters', 'Request Body', 'Response Headers', 'Response Body']
-    ];
-    
-    mocks.forEach(mock => {
-      data.push([
-        mock.businessName || '',
-        mock.apiName || '',
-        mock.method || 'POST',
-        mock.latencyMs !== undefined ? mock.latencyMs : 0,
-        truncateCell(mock.predicate?.headers || {}),
-        truncateCell(mock.predicate?.query || {}),
-        truncateCell(mock.predicate?.request || {}),
-        truncateCell(mock.responseHeaders || {}),
-        truncateCell(mock.responseBody || {})
-      ]);
-    });
-    
-    // Create Excel file
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Mocks');
-    
-    // Download using blob (cross-platform compatible)
-    const timestamp = new Date().toISOString().split('T')[0];
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mock-export-${timestamp}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    showSuccess(`Exported ${mocks.length} mock(s) to Excel`);
-  } catch (err) {
-    showError('Error exporting mocks: ' + err.message);
-  }
-});
-
-// Export all mocks to ZIP (individual JSON files)
-document.getElementById('exportAllToZip').addEventListener('click', async () => {
-  try {
-    const response = await fetch('/api/mocks');
-    const mocks = await response.json();
-    
-    if (mocks.length === 0) {
-      showError('No mocks to export');
+      showError('No MongoDB mocks to export (only external mocks found)');
       return;
     }
     
@@ -497,13 +438,13 @@ document.getElementById('exportAllToZip').addEventListener('click', async () => 
     const url = URL.createObjectURL(content);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mocks-export-${timestamp}.zip`;
+    a.download = `mongodb-mocks-${timestamp}.zip`;
     a.click();
     URL.revokeObjectURL(url);
     
-    showSuccess(`Exported ${mocks.length} mock(s) to ZIP file`);
+    showSuccess(`Exported ${mocks.length} MongoDB mock(s) to ZIP file`);
   } catch (err) {
-    showError('Error exporting to ZIP: ' + err.message);
+    showError('Error exporting MongoDB mocks: ' + err.message);
   }
 });
 
