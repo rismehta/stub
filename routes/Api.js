@@ -168,56 +168,120 @@ function buildStubs(apiMocks) {
       responses: []
     };
 
-    // Auto-detect: if responseFunction is provided, it's dynamic (regardless of responseType)
-    if (doc.responseFunction && doc.responseFunction.trim() !== '') {
-      // Resolve function: check if it's an external function name or inline code
-      let functionCode = null;
+    // Determine response strategy
+    let response;
+    
+    // Strategy 1: Custom responseFunction (dynamic behavior)
+    if (doc.responseFunction && doc.responseFunction.trim() !== '' && loadedFunctions[doc.responseFunction]) {
+      // Custom function exists - use it directly
+      const functionCode = loadedFunctions[doc.responseFunction];
+      console.log(`   Using custom function: ${doc.responseFunction}`);
       
-      // Check if responseFunction is a reference to an external function
-      if (loadedFunctions[doc.responseFunction]) {
-        // Use external function by name
-        functionCode = loadedFunctions[doc.responseFunction];
-        console.log(`   Using external function: ${doc.responseFunction}`);
-      } else {
-        // Use inline function code
-        functionCode = doc.responseFunction;
-        console.log(`   Using inline function`);
-      }
-      
-      // Use inject for dynamic responses
-      const response = {
+      response = {
         inject: functionCode
       };
+    }
+    // Strategy 2: Load from EDS (DEFAULT)
+    else if (doc._metadata?.sourceFile) {
+      // Generate inline inject function to fetch from EDS
+      const sourceFile = doc._metadata.sourceFile;
+      const edsUrl = `${EXTERNAL_MOCKS_URL.replace('/mocks.json', '')}/mocks/${sourceFile}`;
       
-      // Add latency behavior for dynamic responses
-      if (latencyMs > 0) {
-        response._behaviors = { wait: latencyMs };
-        console.log(`Dynamic response (inject) for ${doc.apiName} with ${latencyMs}ms latency`);
-      } else {
-        console.log(`Dynamic response (inject) for ${doc.apiName}`);
-      }
+      console.log(`   Loading from: ${sourceFile}`);
       
-      stub.responses.push(response);
-    } else {
-      // Use is for static responses (default)
-      const response = {
+      // Generate inject function with embedded EDS URL
+      const injectCode = `
+        function(request) {
+          const https = require('https');
+          const url = require('url');
+          
+          const parsedUrl = url.parse('${edsUrl}');
+          
+          return new Promise((resolve, reject) => {
+            const options = {
+              hostname: parsedUrl.hostname,
+              path: parsedUrl.path + '?t=' + Date.now(),
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+              }
+            };
+            
+            const req = https.request(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                try {
+                  const mockData = JSON.parse(data);
+                  
+                  // Get headers from mock, ensure Content-Type is set
+                  const headers = mockData.responseHeaders || {};
+                  if (!headers['Content-Type'] && !headers['content-type']) {
+                    headers['Content-Type'] = 'application/json';
+                  }
+                  
+                  resolve({
+                    statusCode: mockData.statusCode || 200,
+                    headers: headers,
+                    body: mockData.responseBody
+                  });
+                } catch (err) {
+                  resolve({
+                    statusCode: 500,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: { error: 'Failed to parse mock response', details: err.message }
+                  });
+                }
+              });
+            });
+            
+            req.on('error', (err) => {
+              resolve({
+                statusCode: 500,
+                headers: { 'Content-Type': 'application/json' },
+                body: { error: 'Failed to fetch mock from EDS', details: err.message }
+              });
+            });
+            
+            req.end();
+          });
+        }
+      `;
+      
+      response = {
+        inject: injectCode
+      };
+    }
+    // Strategy 3: Inline function code (legacy support)
+    else if (doc.responseFunction && doc.responseFunction.trim() !== '') {
+      // Inline function code provided
+      console.log(`   Using inline function code`);
+      
+      response = {
+        inject: doc.responseFunction
+      };
+    }
+    // Strategy 4: Static response (fallback - shouldn't happen with external mode)
+    else {
+      console.log(`   Static response (fallback)`);
+      
+      response = {
         is: {
           statusCode: 200,
           headers: headers,
           body: doc.responseBody
         }
       };
-      
-      // Add latency behavior for static responses
-      if (latencyMs > 0) {
-        response._behaviors = { wait: latencyMs };
-        console.log(`Static response for ${doc.apiName} with ${latencyMs}ms latency`);
-      } else {
-        console.log(`Static response for ${doc.apiName}`);
-      }
-      
-      stub.responses.push(response);
     }
+    
+    // Add latency behavior (Mountebank handles this, not the inject function!)
+    if (latencyMs > 0) {
+      response._behaviors = { wait: latencyMs };
+      console.log(`   → Latency: ${latencyMs}ms (handled by Mountebank)`);
+    }
+    
+    stub.responses.push(response);
 
     return stub;
   });
@@ -343,11 +407,17 @@ async function reloadAllImposters() {
 // Fetch mocks from external repository (GitHub/AEM)
 async function fetchMocksFromExternal() {
   try {
-    console.log(`Fetching mocks from: ${EXTERNAL_MOCKS_URL}`);
-    const response = await axios.get(EXTERNAL_MOCKS_URL, {
+    // Add cache-busting timestamp to avoid CDN caching issues
+    const timestamp = Date.now();
+    const urlWithCacheBust = `${EXTERNAL_MOCKS_URL}?t=${timestamp}`;
+    
+    console.log(`Fetching mocks from: ${urlWithCacheBust}`);
+    const response = await axios.get(urlWithCacheBust, {
       timeout: 10000,
       headers: {
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
       }
     });
     
@@ -371,11 +441,17 @@ async function fetchMocksFromExternal() {
 // Fetch and parse functions.js from external repository
 async function fetchFunctionsFromExternal() {
   try {
-    console.log(`Fetching functions from: ${EXTERNAL_FUNCTIONS_URL}`);
-    const response = await axios.get(EXTERNAL_FUNCTIONS_URL, {
+    // Add cache-busting timestamp to avoid CDN caching issues
+    const timestamp = Date.now();
+    const urlWithCacheBust = `${EXTERNAL_FUNCTIONS_URL}?t=${timestamp}`;
+    
+    console.log(`Fetching functions from: ${urlWithCacheBust}`);
+    const response = await axios.get(urlWithCacheBust, {
       timeout: 10000,
       headers: {
-        'Accept': 'text/plain'
+        'Accept': 'text/plain',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
       }
     });
     
