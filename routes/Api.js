@@ -90,13 +90,28 @@ function buildStubs(apiMocks) {
         : null;
 
     if (requestPred) {
-      // Use deepEquals for all JSON body predicates
-      // - Exact match on specified fields (not substring matching)
-      // - Allows extra fields in request (ignores UUID, timestamps, etc.)
-      // - Works with all data types (strings, booleans, numbers, nested objects, arrays)
-      // - Avoids 'contains' operator's indexOf error on non-string primitives
-      predicates.push({ deepEquals: { body: requestPred } });
-      console.log(`Body match (deepEquals): ${JSON.stringify(requestPred)}`);
+      // HYBRID MATCHING: Choose operator based on predicate content
+      // - contains: Best for deeply nested objects, but ONLY works with string values
+      // - deepEquals: Works with booleans/numbers, but less flexible with deep nesting
+      
+      try {
+        const predicateStr = JSON.stringify(requestPred);
+        const hasBooleanOrNumber = /:\s*(true|false|\d+)\s*[,}]/.test(predicateStr);
+        
+        if (hasBooleanOrNumber) {
+          // Predicate has boolean/number values → Use deepEquals (avoids indexOf error)
+          predicates.push({ deepEquals: { body: requestPred } });
+          console.log(`Body match (deepEquals): has boolean/number values`);
+        } else {
+          // Predicate has only string values → Use contains (better for deep nesting)
+          predicates.push({ contains: { body: requestPred } });
+          console.log(`Body match (contains): string values only`);
+        }
+      } catch (err) {
+        // Fallback if JSON.stringify fails (e.g., circular reference, corrupted data)
+        console.warn(`Failed to stringify predicate, using contains as fallback: ${err.message}`);
+        predicates.push({ contains: { body: requestPred } });
+      }
     }
 
     // HEADER MATCHING: Use * for flexible matching, otherwise exact match
