@@ -80,8 +80,8 @@ function buildStubs(apiMocks) {
     const method = doc.method || 'POST';
     predicates.push({ equals: { method: method } });
     
-    // SMART BODY MATCHING: Use 'contains' for partial match
-    // This allows extra fields like UUIDs, timestamps to be present
+    // SMART BODY MATCHING: Use 'deepEquals' for robust JSON matching
+    // - Matches exact values on specified fields, ignores extra fields
     const requestPred =
       doc.predicate && Object.keys(doc.predicate.request || {}).length > 0
         ? doc.predicate.request
@@ -90,8 +90,13 @@ function buildStubs(apiMocks) {
         : null;
 
     if (requestPred) {
-      predicates.push({ contains: { body: requestPred } });
-      console.log(`Body match (contains): ${JSON.stringify(requestPred)} - ignores extra fields`);
+      // Use deepEquals for all JSON body predicates
+      // - Exact match on specified fields (not substring matching)
+      // - Allows extra fields in request (ignores UUID, timestamps, etc.)
+      // - Works with all data types (strings, booleans, numbers, nested objects, arrays)
+      // - Avoids 'contains' operator's indexOf error on non-string primitives
+      predicates.push({ deepEquals: { body: requestPred } });
+      console.log(`Body match (deepEquals): ${JSON.stringify(requestPred)}`);
     }
 
     // HEADER MATCHING: Use * for flexible matching, otherwise exact match
@@ -189,10 +194,18 @@ function buildStubs(apiMocks) {
       
       console.log(`   Loading from: ${sourceFile}`);
       
-      // Generate inject function with embedded EDS URL
+      // Serialize callback forwarder config for inject function
+      const callbackForwarderConfig = JSON.stringify(doc.callbackForwarder || null);
+      // Use public-facing proxy URL (not internal stub-generator URL)
+      // Local: http://localhost:8080, Production: https://mockapi-proxy.onrender.com
+      const baseUrl = process.env.PROXY_URL || 'http://localhost:8080';
+      const mockId = doc._metadata?.sourceFile || doc.apiName;
+      
+      // Generate inject function with embedded EDS URL and callback forwarder logic
       const injectCode = `
         function(request) {
           const https = require('https');
+          const http = require('http');
           const url = require('url');
           
           const parsedUrl = url.parse('${edsUrl}');
@@ -221,10 +234,55 @@ function buildStubs(apiMocks) {
                     headers['Content-Type'] = 'application/json';
                   }
                   
+                  let responseBody = mockData.responseBody || {};
+                  
+                  // Inject callback forwarder if configured
+                  const callbackConfig = ${callbackForwarderConfig};
+                  if (callbackConfig && callbackConfig.redirectField && callbackConfig.callbackUrlSource) {
+                    const redirectField = callbackConfig.redirectField;
+                    const callbackUrlSource = callbackConfig.callbackUrlSource;
+                    const delaySeconds = callbackConfig.delaySeconds || 5;
+                    
+                    // Helper to get nested field value (e.g., "data.redirectUrl")
+                    function getNestedValue(obj, path) {
+                      return path.split('.').reduce((current, key) => current && current[key], obj);
+                    }
+                    
+                    // Helper to set nested field value
+                    function setNestedValue(obj, path, value) {
+                      const keys = path.split('.');
+                      const lastKey = keys.pop();
+                      const target = keys.reduce((current, key) => {
+                        if (!current[key]) current[key] = {};
+                        return current[key];
+                      }, obj);
+                      target[lastKey] = value;
+                    }
+                    
+                    // Extract callback URL from request (supports nested fields)
+                    const fieldPath = callbackUrlSource.replace(/^request\\./, '');
+                    const callbackUrl = getNestedValue(request, fieldPath) || 
+                                      (request.body && getNestedValue(request.body, fieldPath));
+                    
+                    // Get current redirect URL value
+                    const currentRedirectUrl = getNestedValue(responseBody, redirectField);
+                    
+                    // Replace redirect URL if both exist
+                    if (currentRedirectUrl && callbackUrl) {
+                      const forwarderUrl = '${baseUrl}/api/callback-forwarder' +
+                        '?callbackUrl=' + encodeURIComponent(callbackUrl) +
+                        '&delay=' + delaySeconds +
+                        '&mockId=' + encodeURIComponent('${mockId}');
+                      
+                      setNestedValue(responseBody, redirectField, forwarderUrl);
+                      console.log('Injected callback forwarder at ' + redirectField + ': ' + forwarderUrl);
+                    }
+                  }
+                  
                   resolve({
                     statusCode: mockData.statusCode || 200,
                     headers: headers,
-                    body: mockData.responseBody
+                    body: responseBody
                   });
                 } catch (err) {
                   resolve({
@@ -869,6 +927,220 @@ router.post('/import/batch', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
+});
+
+// ============================================================
+// CALLBACK FORWARDER ROUTES
+// ============================================================
+
+/**
+ * Find mock configuration by ID (sourceFile or apiName)
+ */
+async function findMockById(mockId) {
+  try {
+    const mocks = await fetchMocksFromExternal();
+    
+    // Try sourceFile first
+    let mock = mocks.find(m => m._metadata?.sourceFile === mockId);
+    
+    // Fallback to apiName
+    if (!mock) {
+      mock = mocks.find(m => m.apiName === mockId);
+    }
+    
+    return mock;
+  } catch (err) {
+    console.error('Error finding mock:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Apply templating to callback payload
+ * Supports: ${NOW} and ${TIMESTAMP}
+ */
+function applyCallbackTemplating(payload) {
+  try {
+    let jsonStr = JSON.stringify(payload);
+    
+    // Replace ${NOW} with current timestamp
+    jsonStr = jsonStr.replace(/\$\{NOW\}/g, new Date().toISOString());
+    
+    // Replace ${TIMESTAMP} with Unix timestamp
+    jsonStr = jsonStr.replace(/\$\{TIMESTAMP\}/g, Date.now());
+    
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.error('Error applying templating:', err.message);
+    return payload;
+  }
+}
+
+/**
+ * GET /callback-forwarder
+ * 
+ * Simulates external service redirect/callback flow (e.g., Perfios e-KYC)
+ * 
+ * WHY TWO RESPONSES?
+ * 1. Instant HTML response → For user's browser (so they don't see blank page)
+ * 2. Delayed POST callback → For AEM backend (simulates external service callback)
+ * 
+ * Real flow:
+ *   User clicks redirect → Perfios site → User fills form → Perfios calls back AEM
+ * 
+ * Mock flow:
+ *   User clicks redirect → See "scheduled" page → Close window → Mock calls back AEM
+ */
+router.get('/callback-forwarder', async (req, res) => {
+  const { callbackUrl, delay = 5, mockId } = req.query;
+  
+  if (!callbackUrl) {
+    return res.status(400).send(`
+      <html>
+      <body style="font-family: Arial; text-align: center; padding: 50px;">
+        <h2>❌ Error: Missing callbackUrl parameter</h2>
+        <p>Callback forwarder requires a callbackUrl query parameter.</p>
+      </body>
+      </html>
+    `);
+  }
+  
+  if (!mockId) {
+    return res.status(400).send(`
+      <html>
+      <body style="font-family: Arial; text-align: center; padding: 50px;">
+        <h2>❌ Error: Missing mockId parameter</h2>
+        <p>Callback forwarder requires a mockId query parameter.</p>
+      </body>
+      </html>
+    `);
+  }
+  
+  const delaySeconds = parseInt(delay) || 5;
+  
+  // RESPONSE #1: Immediate HTML response to user's browser
+  // This prevents the browser from hanging/showing blank page during delay
+  // User sees this, then can close the window
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Callback Simulator</title>
+      <style>
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; 
+          max-width: 600px; 
+          margin: 50px auto; 
+          padding: 20px; 
+          background: #f5f5f5;
+        }
+        .card { 
+          background: white;
+          border-radius: 8px; 
+          padding: 30px; 
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { 
+          color: #4CAF50; 
+          margin-top: 0;
+        }
+        .info { 
+          background: #e8f5e9; 
+          padding: 15px; 
+          margin: 20px 0; 
+          border-radius: 4px;
+          border-left: 4px solid #4CAF50;
+        }
+        .info strong {
+          display: block;
+          margin-bottom: 5px;
+          color: #2e7d32;
+        }
+        code {
+          background: #f5f5f5;
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-size: 13px;
+          word-break: break-all;
+        }
+        .footer {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px solid #e0e0e0;
+          color: #666;
+          font-size: 14px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>✓ Callback Scheduled</h1>
+        
+        <div class="info">
+          <strong>Callback URL:</strong>
+          <code>${callbackUrl}</code>
+          
+          <strong style="margin-top: 10px;">Delay:</strong>
+          ${delaySeconds} seconds
+          
+          <strong style="margin-top: 10px;">Mock ID:</strong>
+          <code>${mockId}</code>
+        </div>
+        
+        <p>✅ Callback will be triggered automatically in <strong>${delaySeconds} seconds</strong>.</p>
+        <p>You can close this window. The callback will be sent in the background.</p>
+        
+        <div class="footer">
+          <p>💡 <strong>What's happening:</strong></p>
+          <ul style="text-align: left; margin-top: 10px;">
+            <li>The mock server is waiting ${delaySeconds} seconds</li>
+            <li>Then it will POST the callback payload to your URL</li>
+            <li>Your application will process the callback automatically</li>
+          </ul>
+        </div>
+      </div>
+    </body>
+    </html>
+  `);
+  
+  // RESPONSE #2: Delayed POST callback to AEM backend
+  // This happens in the background after the HTML response is already sent
+  // Simulates the external service (Perfios) processing and calling back
+  setTimeout(async () => {
+    try {
+      // Fetch mock configuration to get callback payload
+      const mock = await findMockById(mockId);
+      
+      let callbackPayload;
+      if (mock && mock.callbackForwarder && mock.callbackForwarder.payload) {
+        callbackPayload = mock.callbackForwarder.payload;
+        console.log(`Using callback payload from mock: ${mockId}`);
+      } else {
+        // Fallback to default payload
+        callbackPayload = { status: 'success', timestamp: new Date().toISOString() };
+        console.warn(`Mock ${mockId} not found or missing payload, using default`);
+      }
+      
+      // Apply runtime templating (${NOW}, ${TIMESTAMP})
+      const payload = applyCallbackTemplating(callbackPayload);
+      
+      // Trigger callback to AEM
+      console.log(`🔔 Triggering callback to: ${callbackUrl}`);
+      console.log(`   Payload:`, JSON.stringify(payload, null, 2));
+      
+      const response = await axios.post(callbackUrl, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 30000
+      });
+      
+      console.log(`✅ Callback sent successfully (status: ${response.status})`);
+    } catch (error) {
+      console.error(`❌ Callback failed: ${error.message}`);
+      if (error.response) {
+        console.error(`   Response status: ${error.response.status}`);
+      }
+    }
+  }, delaySeconds * 1000);
 });
 
 module.exports = router;
