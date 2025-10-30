@@ -238,8 +238,20 @@ function buildStubs(apiMocks) {
       // Add non-regex predicates (using contains for strings, JSONPath for booleans/numbers)
       if (nonRegexPred && Object.keys(nonRegexPred).length > 0) {
         try {
-          const predicateStr = JSON.stringify(nonRegexPred);
-          const hasBooleanOrNumber = /:\s*(true|false|\d+)\s*[,}]/.test(predicateStr);
+          // Check if predicate has actual boolean/number values (not inside JSON strings)
+          // Arrays with only string values can be handled by 'contains', so we only check for boolean/number
+          const hasBooleansOrNumbers = (obj) => {
+            if (typeof obj !== 'object' || obj === null) {
+              return typeof obj === 'boolean' || typeof obj === 'number';
+            }
+            if (Array.isArray(obj)) {
+              // Check array elements recursively
+              return obj.some(item => hasBooleansOrNumbers(item));
+            }
+            return Object.values(obj).some(value => hasBooleansOrNumbers(value));
+          };
+          
+          const hasBooleanOrNumber = hasBooleansOrNumbers(nonRegexPred);
           
           if (hasBooleanOrNumber) {
             // Has boolean/number values → Use JSONPath + equals for each field
