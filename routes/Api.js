@@ -35,6 +35,97 @@ function calculateSpecificity(doc) {
   return count;
 }
 
+/**
+ * Extract all fields with their JSONPath from predicate object
+ * Used for creating individual JSONPath predicates for boolean/number fields
+ * 
+ * @param {Object} predicate - The predicate object to scan
+ * @param {String} pathPrefix - Current JSONPath prefix (for recursion)
+ * @returns {Array} Array of {jsonPath, value} objects
+ */
+function extractFieldsWithPath(predicate, pathPrefix = '$') {
+  const fields = [];
+  
+  if (!predicate || typeof predicate !== 'object' || Array.isArray(predicate)) {
+    return fields;
+  }
+  
+  for (const [key, value] of Object.entries(predicate)) {
+    const currentPath = `${pathPrefix}.${key}`;
+    
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      // Recursively process nested objects
+      fields.push(...extractFieldsWithPath(value, currentPath));
+    } else {
+      // Leaf value (string, number, boolean, null)
+      fields.push({ jsonPath: currentPath, value });
+    }
+  }
+  
+  return fields;
+}
+
+/**
+ * Extract regex patterns from predicate object
+ * 
+ * Syntax: Use "regex:pattern" in predicate values
+ * Example: {"CRMnextObject": {"MobilePhone": "regex:^\\d{10}$"}}
+ * 
+ * @param {Object} predicate - The predicate object to scan
+ * @param {String} pathPrefix - Current JSONPath prefix (for recursion)
+ * @returns {Object} { regexFields: [{jsonPath, pattern}], nonRegexPred: {...} }
+ */
+function extractRegexPatterns(predicate, pathPrefix = '$') {
+  const regexFields = [];
+  const nonRegexPred = {};
+  
+  if (!predicate || typeof predicate !== 'object' || Array.isArray(predicate)) {
+    return { regexFields, nonRegexPred: predicate };
+  }
+  
+  // OPTIMIZATION: Quick pre-check to avoid walking the tree if no regex patterns exist
+  // This is much faster than always traversing the entire object
+  if (pathPrefix === '$') {  // Only check at root level
+    try {
+      const predicateStr = JSON.stringify(predicate);
+      if (!predicateStr.includes('regex:')) {
+        // No regex patterns found - return entire predicate as non-regex
+        return { regexFields: [], nonRegexPred: predicate };
+      }
+    } catch (err) {
+      // If stringify fails, fall through to regular processing
+      console.warn('Failed to stringify predicate for regex check:', err.message);
+    }
+  }
+  
+  for (const [key, value] of Object.entries(predicate)) {
+    const currentPath = `${pathPrefix}.${key}`;
+    
+    if (typeof value === 'string' && value.startsWith('regex:')) {
+      // Extract regex pattern (remove "regex:" prefix)
+      const pattern = value.substring(6); // "regex:".length = 6
+      regexFields.push({ jsonPath: currentPath, pattern });
+      // Don't add to nonRegexPred
+    } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      // Recursively process nested objects
+      const { regexFields: nestedRegex, nonRegexPred: nestedNonRegex } = 
+        extractRegexPatterns(value, currentPath);
+      
+      regexFields.push(...nestedRegex);
+      
+      // Only add to nonRegexPred if it has content
+      if (nestedNonRegex && Object.keys(nestedNonRegex).length > 0) {
+        nonRegexPred[key] = nestedNonRegex;
+      }
+    } else {
+      // Regular value (string, number, boolean, array)
+      nonRegexPred[key] = value;
+    }
+  }
+  
+  return { regexFields, nonRegexPred };
+}
+
 // Build Mountebank stubs from DB records with smart defaults
 // Sorts by specificity (most specific first) to handle overlapping predicates
 function buildStubs(apiMocks) {
@@ -90,27 +181,55 @@ function buildStubs(apiMocks) {
         : null;
 
     if (requestPred) {
-      // HYBRID MATCHING: Choose operator based on predicate content
-      // - contains: Best for deeply nested objects, but ONLY works with string values
-      // - deepEquals: Works with booleans/numbers, but less flexible with deep nesting
+      // REGEX SUPPORT: Extract regex patterns and non-regex parts
+      const { regexFields, nonRegexPred } = extractRegexPatterns(requestPred);
       
-      try {
-        const predicateStr = JSON.stringify(requestPred);
-        const hasBooleanOrNumber = /:\s*(true|false|\d+)\s*[,}]/.test(predicateStr);
-        
-        if (hasBooleanOrNumber) {
-          // Predicate has boolean/number values → Use deepEquals (avoids indexOf error)
-          predicates.push({ deepEquals: { body: requestPred } });
-          console.log(`Body match (deepEquals): has boolean/number values`);
-        } else {
-          // Predicate has only string values → Use contains (better for deep nesting)
-          predicates.push({ contains: { body: requestPred } });
-          console.log(`Body match (contains): string values only`);
+      // Add regex-based predicates (using JSONPath + matches operator)
+      regexFields.forEach(({ jsonPath, pattern }) => {
+        predicates.push({
+          matches: {
+            body: {
+              [jsonPath]: pattern
+            }
+          }
+        });
+        console.log(`Body match (regex): ${jsonPath} matches ${pattern}`);
+      });
+      
+      // Add non-regex predicates (using contains for strings, JSONPath for booleans/numbers)
+      if (nonRegexPred && Object.keys(nonRegexPred).length > 0) {
+        try {
+          const predicateStr = JSON.stringify(nonRegexPred);
+          const hasBooleanOrNumber = /:\s*(true|false|\d+)\s*[,}]/.test(predicateStr);
+          
+          if (hasBooleanOrNumber) {
+            // Has boolean/number values → Use JSONPath + equals for each field
+            // This allows matching specific fields without caring about extra fields in nested structures
+            extractFieldsWithPath(nonRegexPred, '$').forEach(({ jsonPath, value }) => {
+              predicates.push({
+                equals: {
+                  body: {
+                    [jsonPath]: value
+                  }
+                }
+              });
+              console.log(`Body match (equals JSONPath): ${jsonPath} = ${JSON.stringify(value)}`);
+            });
+          } else {
+            // Only string values → Use contains (better for deep nesting)
+            predicates.push({ contains: { body: nonRegexPred } });
+            console.log(`Body match (contains): string values only`);
+          }
+        } catch (err) {
+          // Fallback if JSON.stringify fails
+          console.warn(`Failed to stringify predicate, using contains as fallback: ${err.message}`);
+          predicates.push({ contains: { body: nonRegexPred } });
         }
-      } catch (err) {
-        // Fallback if JSON.stringify fails (e.g., circular reference, corrupted data)
-        console.warn(`Failed to stringify predicate, using contains as fallback: ${err.message}`);
-        predicates.push({ contains: { body: requestPred } });
+      }
+      
+      // If only regex fields and no non-regex fields, ensure we have at least one predicate
+      if (regexFields.length === 0 && (!nonRegexPred || Object.keys(nonRegexPred).length === 0)) {
+        console.warn(`Empty predicate after regex extraction, skipping body match`);
       }
     }
 
