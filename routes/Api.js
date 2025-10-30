@@ -325,20 +325,40 @@ function buildStubs(apiMocks) {
             // 2. BACK TO BASICS: Use contains with non-empty strings + equals for booleans
             //    The finalStringPredicate already has empty strings removed, so use it!
             
-            console.log(`DEBUG: Using contains for non-empty string structure + equals for booleans`);
+            console.log(`DEBUG: ABANDONING contains operator - using ONLY JSONPath equals`);
+            console.log(`DEBUG: Extracting all non-empty fields for individual matching...`);
             
-            // Add contains predicate with the cleaned string-only structure
-            if (Object.keys(finalStringPredicate).length > 0) {
-              predicates.push({ contains: { body: finalStringPredicate } });
-              console.log(`DEBUG: Contains predicate added with non-empty strings only`);
-              console.log(`DEBUG: Contains structure (first 300 chars): ${JSON.stringify(finalStringPredicate).substring(0, 300)}...`);
-            } else {
-              console.log(`DEBUG: Skipping contains - no non-empty string fields`);
-            }
+            // Get ALL non-empty fields (strings, booleans, numbers) with JSONPath
+            const allFields = extractFieldsWithPath(nonRegexPred, '$');
+            const allNonEmptyFields = allFields.filter(({ jsonPath, value }) => {
+              // Skip empty strings
+              if (value === '' || value === undefined) return false;
+              
+              // Skip problematic field names
+              const fieldName = jsonPath.split('.').pop();
+              if (fieldName.startsWith('-') || fieldName.includes(':')) {
+                console.log(`  Skipping problematic field in equals: "${fieldName}"`);
+                return false;
+              }
+              
+              return true;
+            });
             
-            // Add equals for boolean/number fields
-            console.log(`DEBUG: Adding ${booleanNumberFields.length} boolean/number field(s):`);
-            booleanNumberFields.forEach(({ jsonPath, value }) => {
+            console.log(`DEBUG: Found ${allNonEmptyFields.length} non-empty fields (including booleans/numbers)`);
+            console.log(`DEBUG: Will create ${allNonEmptyFields.length} JSONPath equals predicates`);
+            
+            // Log ALL fields for verification
+            console.log(`\n========== ALL PREDICATE FIELDS ==========`);
+            allNonEmptyFields.forEach(({ jsonPath, value }, idx) => {
+              const valueStr = typeof value === 'string' 
+                ? `"${value.substring(0, 50)}${value.length > 50 ? '...' : ''}"` 
+                : JSON.stringify(value);
+              console.log(`  ${idx + 1}. ${jsonPath} = ${valueStr}`);
+            });
+            console.log(`==========================================\n`);
+            
+            // Add individual equals for EACH field
+            allNonEmptyFields.forEach(({ jsonPath, value }) => {
               predicates.push({
                 equals: {
                   body: {
@@ -346,10 +366,10 @@ function buildStubs(apiMocks) {
                   }
                 }
               });
-              console.log(`  ${jsonPath} = ${JSON.stringify(value)}`);
             });
             
-            console.log(`DEBUG: Total predicates: ${predicates.length} (contains + boolean equals)`);
+            console.log(`DEBUG: Total predicates created: ${predicates.length}`);
+            console.log(`DEBUG: Breakdown: 1 path + 1 method + ${allNonEmptyFields.length} body fields = ${predicates.length}`);
           } else {
             // Only string values → Use contains (better for deep nesting)
             predicates.push({ contains: { body: nonRegexPred } });
