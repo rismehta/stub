@@ -95,8 +95,20 @@ const importJsonBtn = document.getElementById('importJsonBtn');
 const jsonFileName = document.getElementById('jsonFileName');
 const jsonImportMessage = document.getElementById('jsonImportMessage');
 
+// Import JSON button styling and click handler
 importJsonBtn.addEventListener('click', () => {
   jsonFileInput.click();
+});
+
+// Add hover effect for import button
+importJsonBtn.addEventListener('mouseenter', () => {
+  importJsonBtn.style.background = 'linear-gradient(90deg, #a35203, #c4852f 70%)';
+  importJsonBtn.style.boxShadow = '6px 6px 18px rgba(176, 112, 33, 0.5)';
+});
+
+importJsonBtn.addEventListener('mouseleave', () => {
+  importJsonBtn.style.background = 'linear-gradient(90deg, #bc6c25, #a35203)';
+  importJsonBtn.style.boxShadow = '4px 4px 12px rgba(140, 90, 20, 0.4)';
 });
 
 jsonFileInput.addEventListener('change', async (e) => {
@@ -157,24 +169,24 @@ jsonFileInput.addEventListener('change', async (e) => {
   if (results.success.length > 0 && results.failed.length === 0) {
     // All succeeded
     let successHtml = `
-      <div style="color: #28a745;">
-        <strong>✅ ${results.success.length} temporary mock${results.success.length > 1 ? 's' : ''} uploaded!</strong><br>
+      <div style="color: #6d5c00; background: #fff9e6; padding: 1rem; border-radius: 10px; border: 2px solid #d4af37;">
+        <strong style="color: #854505;">✓ ${results.success.length} temporary mock${results.success.length > 1 ? 's' : ''} uploaded!</strong><br>
         <div style="font-size: 0.9rem; margin-top: 0.5rem;">
     `;
     
     results.success.forEach(s => {
       successHtml += `
-        <div style="margin: 0.3rem 0; padding: 0.3rem; background: #f0fff4; border-left: 3px solid #28a745;">
-          <strong>${s.apiName}</strong> (${s.method}) - ${s.file}
+        <div style="margin: 0.3rem 0; padding: 0.4rem 0.6rem; background: #fffbf3; border-left: 3px solid #bc6c25; border-radius: 4px;">
+          <strong style="color: #854505;">${s.apiName}</strong> <span style="color: #a67c52;">(${s.method})</span> - <span style="color: #6d4c41;">${s.file}</span>
         </div>
       `;
     });
     
     successHtml += `
         </div>
-        <em>These mocks are in-memory only and will vanish when pushed to GitHub.</em><br>
+        <em style="color: #a67c52; font-size: 0.85rem;">These mocks are in-memory only and will vanish when pushed to GitHub.</em><br>
         <button type="button" onclick="loadMocks(); document.querySelector('[data-tab=manage]').click();" 
-                style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                style="margin-top: 0.75rem; padding: 0.5rem 1rem; background: linear-gradient(90deg, #bc6c25, #a35203); color: #fff6e7; border: none; border-radius: 10px; cursor: pointer; font-weight: 700; box-shadow: 3px 3px 10px rgba(140, 90, 20, 0.3);">
           View in Manage Tab
         </button>
       </div>
@@ -185,18 +197,18 @@ jsonFileInput.addEventListener('change', async (e) => {
   } else if (results.success.length > 0 && results.failed.length > 0) {
     // Partial success
     let mixedHtml = `
-      <div style="color: #856404;">
-        <strong>⚠️ ${results.success.length} succeeded, ${results.failed.length} failed</strong><br>
+      <div style="background: #fff4e6; padding: 1rem; border-radius: 10px; border: 2px solid #d4a574;">
+        <strong style="color: #a65b1b;">⚠ ${results.success.length} succeeded, ${results.failed.length} failed</strong><br>
         <div style="font-size: 0.9rem; margin-top: 0.5rem;">
     `;
     
     // Show successes
     if (results.success.length > 0) {
-      mixedHtml += '<div style="margin-bottom: 0.5rem;"><strong>✅ Success:</strong></div>';
+      mixedHtml += '<div style="margin-bottom: 0.5rem; color: #6d5c00;"><strong>Success:</strong></div>';
       results.success.forEach(s => {
         mixedHtml += `
-          <div style="margin: 0.2rem 0; padding: 0.2rem; background: #f0fff4; border-left: 3px solid #28a745; font-size: 0.85rem;">
-            ${s.apiName} (${s.method}) - ${s.file}
+          <div style="margin: 0.2rem 0; padding: 0.3rem 0.5rem; background: #fffbf3; border-left: 3px solid #bc6c25; border-radius: 3px; font-size: 0.85rem;">
+            <span style="color: #854505;">${s.apiName}</span> <span style="color: #a67c52;">(${s.method})</span> - <span style="color: #6d4c41;">${s.file}</span>
           </div>
         `;
       });
@@ -204,11 +216,11 @@ jsonFileInput.addEventListener('change', async (e) => {
     
     // Show failures
     if (results.failed.length > 0) {
-      mixedHtml += '<div style="margin-top: 0.5rem; margin-bottom: 0.5rem;"><strong>❌ Failed:</strong></div>';
+      mixedHtml += '<div style="margin-top: 0.5rem; margin-bottom: 0.5rem; color: #8b4513;"><strong>✗ Failed:</strong></div>';
       results.failed.forEach(f => {
         mixedHtml += `
-          <div style="margin: 0.2rem 0; padding: 0.2rem; background: #fff3cd; border-left: 3px solid #ff6b6b; font-size: 0.85rem;">
-            ${f.file}: ${f.error}
+          <div style="margin: 0.2rem 0; padding: 0.3rem 0.5rem; background: #ffeee6; border-left: 3px solid #c65d3b; border-radius: 3px; font-size: 0.85rem;">
+            <span style="color: #8b4513;">${f.file}:</span> <span style="color: #6d4c41;">${f.error}</span>
           </div>
         `;
       });
@@ -217,7 +229,7 @@ jsonFileInput.addEventListener('change', async (e) => {
     mixedHtml += `
         </div>
         <button type="button" onclick="loadMocks(); document.querySelector('[data-tab=manage]').click();" 
-                style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #856404; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                style="margin-top: 0.75rem; padding: 0.5rem 1rem; background: linear-gradient(90deg, #bc6c25, #a35203); color: #fff6e7; border: none; border-radius: 10px; cursor: pointer; font-weight: 700; box-shadow: 3px 3px 10px rgba(140, 90, 20, 0.3);">
           View Successful Mocks
         </button>
       </div>
@@ -225,19 +237,19 @@ jsonFileInput.addEventListener('change', async (e) => {
     
     jsonImportMessage.innerHTML = mixedHtml;
     jsonImportMessage.className = 'message';
-    jsonImportMessage.style.background = '#fff3cd';
+    jsonImportMessage.style.background = 'transparent';
   } else {
     // All failed
     let errorHtml = `
-      <div style="color: #721c24;">
-        <strong>❌ All ${results.failed.length} file${results.failed.length > 1 ? 's' : ''} failed to upload</strong><br>
+      <div style="background: #ffeee6; padding: 1rem; border-radius: 10px; border: 2px solid #c65d3b;">
+        <strong style="color: #8b4513;">✗ All ${results.failed.length} file${results.failed.length > 1 ? 's' : ''} failed to upload</strong><br>
         <div style="font-size: 0.9rem; margin-top: 0.5rem;">
     `;
     
     results.failed.forEach(f => {
       errorHtml += `
-        <div style="margin: 0.3rem 0; padding: 0.3rem; background: #f8d7da; border-left: 3px solid #721c24;">
-          <strong>${f.file}:</strong> ${f.error}
+        <div style="margin: 0.3rem 0; padding: 0.4rem 0.6rem; background: #fff6f3; border-left: 3px solid #c65d3b; border-radius: 4px;">
+          <strong style="color: #8b4513;">${f.file}:</strong> <span style="color: #6d4c41;">${f.error}</span>
         </div>
       `;
     });

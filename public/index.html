@@ -24,25 +24,25 @@
         <h2 id="formTitle">Create New Mock</h2>
         
         <!-- JSON IMPORT SECTION -->
-        <div class="json-import-section" style="background: #f0f7ff; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border: 2px dashed #4a90e2;">
-          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">
-            ⚡ Quick Test: Import JSON Mock
+        <div class="json-import-section" style="background: linear-gradient(135deg, #f6f0e2 0%, #fff9ed 100%); padding: 1.25rem; border-radius: 14px; margin-bottom: 1.5rem; border: 2px dashed #bb8b44; box-shadow: 4px 4px 12px rgba(187, 139, 68, 0.15);">
+          <h3 style="margin: 0 0 0.75rem 0; font-size: 1.1rem; color: #854505; font-weight: 700;">
+            Quick Test: Import JSON Mock
           </h3>
-          <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #666;">
-            Upload one or more JSON files to create <strong>temporary mocks</strong> for immediate testing (in-memory only).
+          <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #6d4c41; line-height: 1.5;">
+            Upload one or more JSON files to create <strong style="color: #a65b1b;">temporary mocks</strong> for immediate testing (in-memory only).
             They will auto-vanish when you push the same mocks to GitHub. Supports AEM-captured mock format.
           </p>
           <div style="display: flex; gap: 0.75rem; align-items: center;">
             <input type="file" id="jsonFileInput" accept=".json,application/json" multiple style="display: none;" />
-            <button type="button" id="importJsonBtn" class="btn-secondary" style="background: #4a90e2; color: white;">
+            <button type="button" id="importJsonBtn" class="btn-secondary" style="background: linear-gradient(90deg, #bc6c25, #a35203); color: #fff6e7; border: none; border-radius: 12px; padding: 10px 20px; font-weight: 700; cursor: pointer; box-shadow: 4px 4px 12px rgba(140, 90, 20, 0.4); transition: all 0.3s ease;">
               Import JSON File(s)
             </button>
-            <span id="jsonFileName" style="font-size: 0.9rem; color: #666;"></span>
+            <span id="jsonFileName" style="font-size: 0.9rem; color: #6d4c41;"></span>
           </div>
           <div id="jsonImportMessage" class="message" style="margin-top: 0.75rem;"></div>
         </div>
         
-        <div style="text-align: center; margin-bottom: 1.5rem; color: #999; font-size: 0.9rem;">
+        <div style="text-align: center; margin-bottom: 1.5rem; color: #a67c52; font-size: 0.9rem; font-weight: 600;">
           — OR Create Manually —
         </div>
         
