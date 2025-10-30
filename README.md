@@ -19,7 +19,8 @@ A powerful, production-ready platform for creating and managing mock APIs using 
 ### Option 1: Try the Live Demo
 
 **Create Mocks:** https://mockapi-backend-09lz.onrender.com  
-**Use Mocks:** https://mockapi-proxy.onrender.com
+**Use Mocks:** https://mockapi-proxy.onrender.com  
+**Service Status:** https://stats.uptimerobot.com/6cjJW5v1nd
 
 **Example:**
 ```bash
@@ -132,11 +133,21 @@ docker-compose down
 5. **If you don't push**, manually delete the temp mock when done
 
 **Via UI:**
-- Look for "Upload Temporary Mock" button (coming soon in UI)
-- Upload your JSON file
-- Mock appears at the top with "TEMPORARY" badge
-- Test it immediately
+- Go to Create tab
+- Look for blue "Quick Test: Import JSON Mock" section
+- Click "Import JSON File(s)" button
+- **Select one or multiple JSON files** (supports AEM-captured mock format)
+- Mocks appear at the top with "TEMPORARY" badge
+- Test them immediately
 - Delete when done or push to GitHub
+
+**Batch Upload from AEM Export:**
+1. Export captured mocks from AEM: `http://localhost:4502/bin/mock-capture/export`
+2. Extract the ZIP file
+3. Go to Create tab → Import JSON Mock section
+4. Select all JSON files at once in the file picker (Ctrl+Click or Cmd+Click)
+5. All mocks uploaded as temporary mocks for immediate testing
+6. Shows success/failure summary for each file
 
 **Auto-cleanup:**
 - When you push the same mock to GitHub and trigger a reload

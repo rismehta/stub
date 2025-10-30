@@ -29,13 +29,13 @@
             ⚡ Quick Test: Import JSON Mock
           </h3>
           <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #666;">
-            Upload a JSON file to create a <strong>temporary mock</strong> for immediate testing (in-memory only).
-            It will auto-vanish when you push the same mock to GitHub.
+            Upload one or more JSON files to create <strong>temporary mocks</strong> for immediate testing (in-memory only).
+            They will auto-vanish when you push the same mocks to GitHub. Supports AEM-captured mock format.
           </p>
           <div style="display: flex; gap: 0.75rem; align-items: center;">
-            <input type="file" id="jsonFileInput" accept=".json,application/json" style="display: none;" />
+            <input type="file" id="jsonFileInput" accept=".json,application/json" multiple style="display: none;" />
             <button type="button" id="importJsonBtn" class="btn-secondary" style="background: #4a90e2; color: white;">
-              📄 Import JSON File
+              Import JSON File(s)
             </button>
             <span id="jsonFileName" style="font-size: 0.9rem; color: #666;"></span>
           </div>

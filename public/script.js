@@ -100,69 +100,159 @@ importJsonBtn.addEventListener('click', () => {
 });
 
 jsonFileInput.addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const files = Array.from(e.target.files);
+  if (!files || files.length === 0) return;
   
-  jsonFileName.textContent = `Selected: ${file.name}`;
-  jsonImportMessage.textContent = '';
+  const fileCount = files.length;
+  jsonFileName.textContent = `Selected: ${fileCount} file${fileCount > 1 ? 's' : ''}`;
+  jsonImportMessage.textContent = 'Uploading...';
   jsonImportMessage.className = 'message';
   
-  try {
-    const text = await file.text();
-    const mockData = JSON.parse(text);
-    
-    // Validate required fields
-    if (!mockData.apiName) {
-      jsonImportMessage.textContent = 'Error: JSON must have "apiName" field';
-      jsonImportMessage.className = 'message error';
-      return;
+  const results = {
+    success: [],
+    failed: []
+  };
+  
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const mockData = JSON.parse(text);
+      
+      // Validate required fields
+      if (!mockData.apiName) {
+        results.failed.push({ file: file.name, error: 'Missing "apiName" field' });
+        continue;
+      }
+      
+      if (!mockData.responseBody) {
+        results.failed.push({ file: file.name, error: 'Missing "responseBody" field' });
+        continue;
+      }
+      
+      // Upload as temporary mock
+      const response = await fetch('/api/mocks/upload-temp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mockData)
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        results.success.push({
+          file: file.name,
+          apiName: result.mock.apiName,
+          method: result.mock.method,
+          testUrl: result.testUrl
+        });
+      } else {
+        results.failed.push({ file: file.name, error: result.error || 'Upload failed' });
+      }
+    } catch (err) {
+      results.failed.push({ file: file.name, error: err.message });
     }
+  }
+  
+  // Display results
+  if (results.success.length > 0 && results.failed.length === 0) {
+    // All succeeded
+    let successHtml = `
+      <div style="color: #28a745;">
+        <strong>✅ ${results.success.length} temporary mock${results.success.length > 1 ? 's' : ''} uploaded!</strong><br>
+        <div style="font-size: 0.9rem; margin-top: 0.5rem;">
+    `;
     
-    if (!mockData.responseBody) {
-      jsonImportMessage.textContent = 'Error: JSON must have "responseBody" field';
-      jsonImportMessage.className = 'message error';
-      return;
-    }
-    
-    // Upload as temporary mock
-    const response = await fetch('/api/mocks/upload-temp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(mockData)
-    });
-    
-    const result = await response.json();
-    
-    if (response.ok) {
-      jsonImportMessage.innerHTML = `
-        <div style="color: #28a745;">
-          <strong>✅ Temporary mock uploaded!</strong><br>
-          <span style="font-size: 0.9rem;">
-            API: <strong>${result.mock.apiName}</strong> (${result.mock.method})<br>
-            Test URL: <code>${result.testUrl}</code><br>
-            <em>This mock is in-memory only and will vanish when pushed to GitHub.</em><br>
-            <button type="button" onclick="loadMocks(); document.querySelector('[data-tab=manage]').click();" 
-                    style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
-              View in Manage Tab
-            </button>
-          </span>
+    results.success.forEach(s => {
+      successHtml += `
+        <div style="margin: 0.3rem 0; padding: 0.3rem; background: #f0fff4; border-left: 3px solid #28a745;">
+          <strong>${s.apiName}</strong> (${s.method}) - ${s.file}
         </div>
       `;
-      jsonImportMessage.className = 'message success';
-      
-      // Reset file input
-      jsonFileInput.value = '';
-      setTimeout(() => {
-        jsonFileName.textContent = '';
-      }, 2000);
-    } else {
-      jsonImportMessage.textContent = `Error: ${result.error || 'Failed to upload mock'}`;
-      jsonImportMessage.className = 'message error';
+    });
+    
+    successHtml += `
+        </div>
+        <em>These mocks are in-memory only and will vanish when pushed to GitHub.</em><br>
+        <button type="button" onclick="loadMocks(); document.querySelector('[data-tab=manage]').click();" 
+                style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+          View in Manage Tab
+        </button>
+      </div>
+    `;
+    
+    jsonImportMessage.innerHTML = successHtml;
+    jsonImportMessage.className = 'message success';
+  } else if (results.success.length > 0 && results.failed.length > 0) {
+    // Partial success
+    let mixedHtml = `
+      <div style="color: #856404;">
+        <strong>⚠️ ${results.success.length} succeeded, ${results.failed.length} failed</strong><br>
+        <div style="font-size: 0.9rem; margin-top: 0.5rem;">
+    `;
+    
+    // Show successes
+    if (results.success.length > 0) {
+      mixedHtml += '<div style="margin-bottom: 0.5rem;"><strong>✅ Success:</strong></div>';
+      results.success.forEach(s => {
+        mixedHtml += `
+          <div style="margin: 0.2rem 0; padding: 0.2rem; background: #f0fff4; border-left: 3px solid #28a745; font-size: 0.85rem;">
+            ${s.apiName} (${s.method}) - ${s.file}
+          </div>
+        `;
+      });
     }
-  } catch (err) {
-    jsonImportMessage.textContent = `Error: ${err.message}`;
+    
+    // Show failures
+    if (results.failed.length > 0) {
+      mixedHtml += '<div style="margin-top: 0.5rem; margin-bottom: 0.5rem;"><strong>❌ Failed:</strong></div>';
+      results.failed.forEach(f => {
+        mixedHtml += `
+          <div style="margin: 0.2rem 0; padding: 0.2rem; background: #fff3cd; border-left: 3px solid #ff6b6b; font-size: 0.85rem;">
+            ${f.file}: ${f.error}
+          </div>
+        `;
+      });
+    }
+    
+    mixedHtml += `
+        </div>
+        <button type="button" onclick="loadMocks(); document.querySelector('[data-tab=manage]').click();" 
+                style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #856404; color: white; border: none; border-radius: 4px; cursor: pointer;">
+          View Successful Mocks
+        </button>
+      </div>
+    `;
+    
+    jsonImportMessage.innerHTML = mixedHtml;
+    jsonImportMessage.className = 'message';
+    jsonImportMessage.style.background = '#fff3cd';
+  } else {
+    // All failed
+    let errorHtml = `
+      <div style="color: #721c24;">
+        <strong>❌ All ${results.failed.length} file${results.failed.length > 1 ? 's' : ''} failed to upload</strong><br>
+        <div style="font-size: 0.9rem; margin-top: 0.5rem;">
+    `;
+    
+    results.failed.forEach(f => {
+      errorHtml += `
+        <div style="margin: 0.3rem 0; padding: 0.3rem; background: #f8d7da; border-left: 3px solid #721c24;">
+          <strong>${f.file}:</strong> ${f.error}
+        </div>
+      `;
+    });
+    
+    errorHtml += '</div></div>';
+    
+    jsonImportMessage.innerHTML = errorHtml;
     jsonImportMessage.className = 'message error';
   }
+  
+  // Reset file input
+  jsonFileInput.value = '';
+  setTimeout(() => {
+    jsonFileName.textContent = '';
+  }, 3000);
 });
 
 // Save/Update mock
