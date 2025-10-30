@@ -315,16 +315,32 @@ function buildStubs(apiMocks) {
             console.log(`DEBUG: String-only predicate keys: ${Object.keys(finalStringPredicate).join(', ')}`);
             console.log(`DEBUG: Boolean/number fields found: ${booleanNumberFields.length}`);
             
-            // 2. Add contains predicate ONLY if there are string fields left
-            if (Object.keys(finalStringPredicate).length > 0) {
-              predicates.push({ contains: { body: finalStringPredicate } });
-              console.log(`Body match (contains): string-only structure (${booleanNumberFields.length} boolean/number field(s) stripped)`);
-              console.log(`DEBUG: Contains predicate structure: ${JSON.stringify(finalStringPredicate, null, 2).substring(0, 500)}...`);
-            } else {
-              console.log(`Body match: skipping contains (no string fields, only ${booleanNumberFields.length} boolean/number field(s))`);
-            }
+            // 2. SMART HYBRID: Match on booleans/numbers + meaningful string fields only
+            //    (Avoids "too many predicates" while still being specific)
             
-            // 3. Add JSONPath equals for each boolean/number field
+            // Get all non-empty string fields
+            const allFields = extractFieldsWithPath(nonRegexPred, '$');
+            const meaningfulStringFields = allFields.filter(({ value }) => {
+              // Keep non-empty strings (these are the meaningful ones)
+              return typeof value === 'string' && value !== '';
+            });
+            
+            console.log(`DEBUG: Found ${meaningfulStringFields.length} meaningful string fields`);
+            console.log(`DEBUG: Found ${booleanNumberFields.length} boolean/number fields`);
+            console.log(`DEBUG: Total fields to match: ${meaningfulStringFields.length + booleanNumberFields.length}`);
+            
+            // Add equals for meaningful string fields
+            meaningfulStringFields.forEach(({ jsonPath, value }) => {
+              predicates.push({
+                equals: {
+                  body: {
+                    [jsonPath]: value
+                  }
+                }
+              });
+            });
+            
+            // Add equals for boolean/number fields  
             booleanNumberFields.forEach(({ jsonPath, value }) => {
               predicates.push({
                 equals: {
@@ -333,7 +349,12 @@ function buildStubs(apiMocks) {
                   }
                 }
               });
-              console.log(`Body match (equals JSONPath): ${jsonPath} = ${JSON.stringify(value)}`);
+            });
+            
+            // Log samples
+            console.log(`DEBUG: Sample string predicates (first 3 of ${meaningfulStringFields.length}):`);
+            meaningfulStringFields.slice(0, 3).forEach(({ jsonPath, value }) => {
+              console.log(`  ${jsonPath} = ${JSON.stringify(value).substring(0, 50)}`);
             });
             
             console.log(`DEBUG: Total predicates for this stub: ${predicates.length}`);
