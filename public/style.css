@@ -798,6 +798,34 @@ button#cancelBtn:hover {
   box-shadow: 0 2px 4px rgba(255, 107, 107, 0.25);
 }
 
+.source-badge.github {
+  background: linear-gradient(135deg, #6e5494 0%, #4a3f6b 100%);
+  color: white;
+  box-shadow: 0 2px 4px rgba(110, 84, 148, 0.25);
+}
+
+.source-badge.temp {
+  background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+  color: white;
+  box-shadow: 0 2px 4px rgba(74, 144, 226, 0.35);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 2px 4px rgba(74, 144, 226, 0.35);
+  }
+  50% {
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.6);
+  }
+}
+
+/* Temporary mock styling */
+.variant-item.temp-mock {
+  background: linear-gradient(135deg, #f0f7ff 0%, #e3f2ff 100%);
+  border-left: 4px solid #4a90e2;
+}
+
 /* Info Banner */
 .info-banner {
   padding: 1rem 1.5rem;

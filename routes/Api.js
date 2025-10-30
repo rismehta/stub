@@ -16,6 +16,45 @@ const EXTERNAL_FUNCTIONS_URL = process.env.EXTERNAL_FUNCTIONS_URL || ' https://m
 // Store loaded functions from external source
 let loadedFunctions = {};
 
+// In-memory storage for temporary test mocks (uploaded via UI for testing before GitHub commit)
+// These are automatically cleaned up when matching mocks are loaded from GitHub
+let temporaryMocks = [];
+
+/**
+ * Check if two mocks match (same API endpoint and method)
+ * Used to detect when a temporary mock should be removed because it's now in GitHub
+ */
+function mocksMatch(mock1, mock2) {
+  const normalizeApiName = (name) => (name || '').replace(/^\/+/, '').toLowerCase();
+  const normalizeMethod = (method) => (method || 'POST').toUpperCase();
+  
+  return normalizeApiName(mock1.apiName) === normalizeApiName(mock2.apiName) &&
+         normalizeMethod(mock1.method) === normalizeMethod(mock2.method);
+}
+
+/**
+ * Clean up temporary mocks that match GitHub mocks
+ * Called automatically after loading from GitHub
+ */
+function cleanupMatchingTempMocks(githubMocks) {
+  const beforeCount = temporaryMocks.length;
+  
+  temporaryMocks = temporaryMocks.filter(tempMock => {
+    const hasMatch = githubMocks.some(githubMock => mocksMatch(tempMock, githubMock));
+    if (hasMatch) {
+      console.log(`Removing temp mock "${tempMock.businessName}" (${tempMock.apiName}) - now in GitHub`);
+    }
+    return !hasMatch;
+  });
+  
+  const removedCount = beforeCount - temporaryMocks.length;
+  if (removedCount > 0) {
+    console.log(`Cleaned up ${removedCount} temporary mock(s) that are now in GitHub`);
+  }
+  
+  return removedCount;
+}
+
 // Calculate predicate specificity (more fields = more specific)
 function calculateSpecificity(doc) {
   let count = 0;
@@ -719,14 +758,22 @@ async function reloadFromExternal() {
   // Store functions globally for use in buildStubs
   loadedFunctions = externalFunctions;
   
-  // Option 1: Just load into Mountebank (ephemeral)
-  console.log(`Loading ${externalMocks.length} external mocks into Mountebank`);
-  await upsertImposter(externalMocks);
+  // Clean up temporary mocks that now exist in GitHub
+  const removedTempMocks = cleanupMatchingTempMocks(externalMocks);
+  
+  // Combine external mocks with remaining temporary mocks (temp mocks have higher priority)
+  const allMocks = [...temporaryMocks, ...externalMocks];
+  
+  // Load all mocks into Mountebank (temp mocks first = higher priority in matching)
+  console.log(`Loading ${allMocks.length} mocks into Mountebank (${temporaryMocks.length} temporary, ${externalMocks.length} from GitHub)`);
+  await upsertImposter(allMocks);
   
   
   return {
     mocksLoaded: externalMocks.length,
     functionsLoaded: Object.keys(externalFunctions).length,
+    temporaryMocksActive: temporaryMocks.length,
+    temporaryMocksRemoved: removedTempMocks,
     mongoImport: null
   };
 }
@@ -930,15 +977,25 @@ router.get('/mocks', async (req, res) => {
       console.log('Fetching mocks from external source for UI display');
       const externalMocks = await fetchMocksFromExternal();
       
-      // Return external mocks with indicator that they're from external source
-      const mocksWithSource = externalMocks.map(mock => ({
+      // Add external mocks with indicator that they're from external source
+      const externalMocksWithSource = externalMocks.map(mock => ({
         ...mock,
         _id: mock._metadata?.sourceFile || mock.apiName, // Use sourceFile as ID since they don't have MongoDB _id
         _source: 'external',
         _isReadOnly: true // Indicate these can't be edited via UI
       }));
       
-      return res.json(mocksWithSource);
+      // Add temporary mocks with indicator that they're temporary
+      const tempMocksWithSource = temporaryMocks.map((mock, index) => ({
+        ...mock,
+        _id: `temp-${index}-${mock.apiName}`, // Unique ID for temporary mocks
+        _source: 'temporary',
+        _isTemporary: true,
+        _isReadOnly: false // Temporary mocks can be deleted
+      }));
+      
+      // Return temp mocks first (so they appear at the top of the list)
+      return res.json([...tempMocksWithSource, ...externalMocksWithSource]);
     }
     
     // Default: Load from MongoDB
@@ -953,6 +1010,130 @@ router.get('/mocks', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch mocks' });
+  }
+});
+
+// POST upload temporary mock (for testing before GitHub commit)
+router.post('/mocks/upload-temp', async (req, res) => {
+  try {
+    const mockData = req.body;
+    
+    // Validate required fields
+    if (!mockData.apiName) {
+      return res.status(400).json({ error: 'apiName is required' });
+    }
+    
+    if (!mockData.responseBody) {
+      return res.status(400).json({ error: 'responseBody is required' });
+    }
+    
+    // Add default values
+    const tempMock = {
+      businessName: mockData.businessName || `Temporary Test Mock - ${mockData.apiName}`,
+      apiName: mockData.apiName,
+      method: mockData.method || 'POST',
+      statusCode: mockData.statusCode || 200,
+      latencyMs: mockData.latencyMs || 0,
+      predicate: mockData.predicate || { request: {}, headers: {}, query: {} },
+      responseHeaders: mockData.responseHeaders || { 'Content-Type': 'application/json' },
+      responseBody: mockData.responseBody,
+      responseFunction: mockData.responseFunction || null,
+      _uploadedAt: new Date().toISOString()
+    };
+    
+    // Check if a temp mock with same API already exists (replace it)
+    const existingIndex = temporaryMocks.findIndex(m => mocksMatch(m, tempMock));
+    if (existingIndex >= 0) {
+      console.log(`Replacing existing temp mock for ${tempMock.apiName}`);
+      temporaryMocks[existingIndex] = tempMock;
+    } else {
+      console.log(`Adding new temp mock for ${tempMock.apiName}`);
+      temporaryMocks.push(tempMock);
+    }
+    
+    // Reload imposter with all mocks (temp + GitHub)
+    try {
+      const externalMocks = await fetchMocksFromExternal();
+      const allMocks = [...temporaryMocks, ...externalMocks];
+      await upsertImposter(allMocks);
+      console.log(`Reloaded imposter with ${temporaryMocks.length} temp mocks + ${externalMocks.length} GitHub mocks`);
+    } catch (reloadErr) {
+      console.error('Failed to reload imposter after adding temp mock:', reloadErr);
+      // Continue anyway - mock is in memory
+    }
+    
+    res.json({
+      message: 'Temporary mock uploaded successfully',
+      mock: tempMock,
+      note: 'This mock is in-memory only. It will be removed when you reload from GitHub or push this mock to GitHub.',
+      totalTemporaryMocks: temporaryMocks.length,
+      testUrl: `${req.protocol}://${req.get('host')}/${tempMock.apiName}`
+    });
+  } catch (err) {
+    console.error('Failed to upload temporary mock:', err);
+    res.status(500).json({ 
+      error: 'Failed to upload temporary mock',
+      details: err.message 
+    });
+  }
+});
+
+// DELETE temporary mock
+router.delete('/mocks/temp/:apiName', async (req, res) => {
+  try {
+    const apiName = decodeURIComponent(req.params.apiName);
+    const method = req.query.method || 'POST';
+    
+    const beforeCount = temporaryMocks.length;
+    temporaryMocks = temporaryMocks.filter(m => 
+      !(m.apiName === apiName && (m.method || 'POST') === method)
+    );
+    
+    if (temporaryMocks.length === beforeCount) {
+      return res.status(404).json({ error: 'Temporary mock not found' });
+    }
+    
+    // Reload imposter without this mock
+    try {
+      const externalMocks = await fetchMocksFromExternal();
+      const allMocks = [...temporaryMocks, ...externalMocks];
+      await upsertImposter(allMocks);
+      console.log(`Removed temp mock and reloaded imposter`);
+    } catch (reloadErr) {
+      console.error('Failed to reload imposter after removing temp mock:', reloadErr);
+    }
+    
+    res.json({
+      message: 'Temporary mock deleted successfully',
+      remainingTemporaryMocks: temporaryMocks.length
+    });
+  } catch (err) {
+    console.error('Failed to delete temporary mock:', err);
+    res.status(500).json({ 
+      error: 'Failed to delete temporary mock',
+      details: err.message 
+    });
+  }
+});
+
+// GET temporary mocks count/info
+router.get('/mocks/temp/info', async (req, res) => {
+  try {
+    res.json({
+      totalTemporaryMocks: temporaryMocks.length,
+      mocks: temporaryMocks.map(m => ({
+        businessName: m.businessName,
+        apiName: m.apiName,
+        method: m.method || 'POST',
+        uploadedAt: m._uploadedAt
+      }))
+    });
+  } catch (err) {
+    console.error('Failed to fetch temp mocks info:', err);
+    res.status(500).json({ 
+      error: 'Failed to fetch temporary mocks info',
+      details: err.message 
+    });
   }
 });
 

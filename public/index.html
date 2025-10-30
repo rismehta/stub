@@ -22,6 +22,30 @@
       <!-- CREATE/EDIT MOCK TAB -->
       <div id="createTab" class="tab-content active">
         <h2 id="formTitle">Create New Mock</h2>
+        
+        <!-- JSON IMPORT SECTION -->
+        <div class="json-import-section" style="background: #f0f7ff; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border: 2px dashed #4a90e2;">
+          <h3 style="margin: 0 0 0.75rem 0; font-size: 1rem; color: #4a90e2;">
+            ⚡ Quick Test: Import JSON Mock
+          </h3>
+          <p style="margin: 0 0 0.75rem 0; font-size: 0.9rem; color: #666;">
+            Upload a JSON file to create a <strong>temporary mock</strong> for immediate testing (in-memory only).
+            It will auto-vanish when you push the same mock to GitHub.
+          </p>
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <input type="file" id="jsonFileInput" accept=".json,application/json" style="display: none;" />
+            <button type="button" id="importJsonBtn" class="btn-secondary" style="background: #4a90e2; color: white;">
+              📄 Import JSON File
+            </button>
+            <span id="jsonFileName" style="font-size: 0.9rem; color: #666;"></span>
+          </div>
+          <div id="jsonImportMessage" class="message" style="margin-top: 0.75rem;"></div>
+        </div>
+        
+        <div style="text-align: center; margin-bottom: 1.5rem; color: #999; font-size: 0.9rem;">
+          — OR Create Manually —
+        </div>
+        
         <form id="mockApiForm" novalidate>
           <input type="hidden" id="mockId" value="" />
           

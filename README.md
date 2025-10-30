@@ -120,6 +120,37 @@ docker-compose down
 
 ---
 
+### Testing Mocks Before GitHub Commit
+
+**Use Case:** You've created a mock JSON file and want to test it immediately without pushing to GitHub first.
+
+**How it works:**
+1. **Upload your JSON** via the UI or API
+2. **Mock is loaded into Mountebank immediately** (in-memory only)
+3. **Test the mock** with real requests
+4. **When you push to GitHub**, the temp mock automatically vanishes
+5. **If you don't push**, manually delete the temp mock when done
+
+**Via UI:**
+- Look for "Upload Temporary Mock" button (coming soon in UI)
+- Upload your JSON file
+- Mock appears at the top with "TEMPORARY" badge
+- Test it immediately
+- Delete when done or push to GitHub
+
+**Auto-cleanup:**
+- When you push the same mock to GitHub and trigger a reload
+- The temporary mock is automatically removed
+- GitHub version takes over
+
+**Benefits:**
+- Test complex predicates before committing
+- Iterate quickly on mock design
+- No need to commit/push for every test
+- Automatically cleaned up when finalized
+
+---
+
 ### Using Mocks in Your App
 
 **Change your API base URL:**
@@ -918,12 +949,15 @@ curl -X POST https://your-backend.onrender.com/api/reloadFromExternal
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/mocks` | List all mocks |
+| GET | `/api/mocks` | List all mocks (includes temporary mocks) |
 | GET | `/api/mocks/:id` | Get single mock |
 | POST | `/api/saveOrUpdate` | Create or update mock |
 | DELETE | `/api/mocks/:id` | Delete mock |
+| POST | `/api/mocks/upload-temp` | **NEW:** Upload temporary mock for testing (in-memory only) |
+| DELETE | `/api/mocks/temp/:apiName?method=POST` | **NEW:** Delete temporary mock |
+| GET | `/api/mocks/temp/info` | **NEW:** Get info about temporary mocks |
 | POST | `/api/reloadAllImposters` | Reload all mocks into Mountebank |
-| POST | `/api/reloadFromExternal` | Reload mocks from external GitHub repository |
+| POST | `/api/reloadFromExternal` | Reload mocks from external GitHub repository (auto-cleans temp mocks) |
 | GET | `/api/externalMocks` | Fetch mocks from external source (without loading) |
 | GET | `/api/externalMocks/info` | Get info about external mocks |
 | GET | `/api/externalFunctions` | Get info about loaded external functions |

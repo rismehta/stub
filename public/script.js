@@ -89,6 +89,82 @@ function resetForm() {
   dynamicResponseSection.style.display = 'none';
 }
 
+// JSON Import functionality
+const jsonFileInput = document.getElementById('jsonFileInput');
+const importJsonBtn = document.getElementById('importJsonBtn');
+const jsonFileName = document.getElementById('jsonFileName');
+const jsonImportMessage = document.getElementById('jsonImportMessage');
+
+importJsonBtn.addEventListener('click', () => {
+  jsonFileInput.click();
+});
+
+jsonFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  jsonFileName.textContent = `Selected: ${file.name}`;
+  jsonImportMessage.textContent = '';
+  jsonImportMessage.className = 'message';
+  
+  try {
+    const text = await file.text();
+    const mockData = JSON.parse(text);
+    
+    // Validate required fields
+    if (!mockData.apiName) {
+      jsonImportMessage.textContent = 'Error: JSON must have "apiName" field';
+      jsonImportMessage.className = 'message error';
+      return;
+    }
+    
+    if (!mockData.responseBody) {
+      jsonImportMessage.textContent = 'Error: JSON must have "responseBody" field';
+      jsonImportMessage.className = 'message error';
+      return;
+    }
+    
+    // Upload as temporary mock
+    const response = await fetch('/api/mocks/upload-temp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mockData)
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      jsonImportMessage.innerHTML = `
+        <div style="color: #28a745;">
+          <strong>✅ Temporary mock uploaded!</strong><br>
+          <span style="font-size: 0.9rem;">
+            API: <strong>${result.mock.apiName}</strong> (${result.mock.method})<br>
+            Test URL: <code>${result.testUrl}</code><br>
+            <em>This mock is in-memory only and will vanish when pushed to GitHub.</em><br>
+            <button type="button" onclick="loadMocks(); document.querySelector('[data-tab=manage]').click();" 
+                    style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+              View in Manage Tab
+            </button>
+          </span>
+        </div>
+      `;
+      jsonImportMessage.className = 'message success';
+      
+      // Reset file input
+      jsonFileInput.value = '';
+      setTimeout(() => {
+        jsonFileName.textContent = '';
+      }, 2000);
+    } else {
+      jsonImportMessage.textContent = `Error: ${result.error || 'Failed to upload mock'}`;
+      jsonImportMessage.className = 'message error';
+    }
+  } catch (err) {
+    jsonImportMessage.textContent = `Error: ${err.message}`;
+    jsonImportMessage.className = 'message error';
+  }
+});
+
 // Save/Update mock
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -275,27 +351,49 @@ async function loadMocks() {
         const latencyClass = latency === 0 ? 'instant' : latency < 200 ? 'fast' : latency > 1000 ? 'slow' : '';
         const latencyBadge = `<span class="latency-badge ${latencyClass}">${latency}ms</span>`;
         
-        // Show Test-only for external mocks, full actions for MongoDB mocks
+        // Source badges
         const isExternalMock = mock._source === 'external';
+        const isTemporaryMock = mock._source === 'temporary' || mock._isTemporary;
+        
+        let sourceBadge = '';
+        if (isTemporaryMock) {
+          sourceBadge = '<span class="source-badge temp">⚡ TEMPORARY</span>';
+        } else if (isExternalMock) {
+          sourceBadge = '<span class="source-badge github">📦 GitHub</span>';
+        }
         
         // Store mock index for testing (avoids ID issues with external mocks)
         const mockIndex = mocks.findIndex(m => m.apiName === mock.apiName && JSON.stringify(m.predicate) === JSON.stringify(mock.predicate));
         
-        const actionButtons = isExternalMock 
-          ? `<button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>`
-          : `
-              <button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>
-              <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
-              <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
-              <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
-            `;
+        // Action buttons based on source
+        let actionButtons;
+        if (isTemporaryMock) {
+          // Temporary mocks: Test + Delete
+          const encodedApiName = encodeURIComponent(mock.apiName);
+          actionButtons = `
+            <button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>
+            <button class="btn-delete" onclick="deleteTempMock('${encodedApiName}', '${method}', '${apiName}')">Delete</button>
+          `;
+        } else if (isExternalMock) {
+          // External (GitHub) mocks: Test only
+          actionButtons = `<button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>`;
+        } else {
+          // MongoDB mocks: Full actions
+          actionButtons = `
+            <button class="btn-test" onclick="testMockByIndex(${mockIndex}, '${apiName}', '${method}')">Test</button>
+            <button class="btn-edit" onclick="editMock('${mock._id}')">Edit</button>
+            <button class="btn-clone" onclick="cloneMock('${mock._id}')">Clone</button>
+            <button class="btn-delete" onclick="deleteMock('${mock._id}', '${apiName}')">Delete</button>
+          `;
+        }
         
         html += `
-          <div class="variant-item">
+          <div class="variant-item ${isTemporaryMock ? 'temp-mock' : ''}">
             <div class="variant-info">
               ${businessName}
               <span class="variant-method">${method}</span>
               ${latencyBadge}
+              ${sourceBadge}
               <span class="variant-predicate">${predicateStr}</span>
             </div>
             <div class="variant-actions">
@@ -325,11 +423,15 @@ document.getElementById('exportMongoDBMocks').addEventListener('click', async ()
     const response = await fetch('/api/mocks');
     const allMocksData = await response.json();
     
-    // Filter to only MongoDB mocks (exclude external/GitHub mocks)
-    const mocks = allMocksData.filter(mock => mock._source !== 'external');
+    // Filter to only MongoDB mocks (exclude external/GitHub mocks and temporary mocks)
+    const mocks = allMocksData.filter(mock => 
+      mock._source !== 'external' && 
+      mock._source !== 'temporary' && 
+      !mock._isTemporary
+    );
     
     if (mocks.length === 0) {
-      showError('No MongoDB mocks to export (only external mocks found)');
+      showError('No MongoDB mocks to export (only external/temporary mocks found)');
       return;
     }
     
@@ -578,6 +680,34 @@ window.deleteMock = async function(id, apiName) {
   } catch (err) {
     mocksList.innerHTML = originalContent;
     alert('❌ Error deleting mock: ' + err.message);
+  }
+};
+
+// Delete temporary mock
+window.deleteTempMock = async function(encodedApiName, method, displayName) {
+  if (!confirm(`🗑️  Delete temporary mock for "${displayName}"?\n\nThis is an in-memory mock (not in GitHub).`)) {
+    return;
+  }
+  
+  // Show loading state
+  const mocksList = document.getElementById('mocksList');
+  const originalContent = mocksList.innerHTML;
+  mocksList.innerHTML = '<p class="loading">Deleting temporary mock...</p>';
+  
+  try {
+    const resp = await fetch(`/api/mocks/temp/${encodedApiName}?method=${method}`, { method: 'DELETE' });
+    if (resp.ok) {
+      // Show success message briefly then reload
+      mocksList.innerHTML = '<p class="success" style="color: #556b2f; padding: 2rem; text-align: center; font-size: 1.1rem;">✅ Temporary mock deleted!</p>';
+      setTimeout(() => loadMocks(), 800);
+    } else {
+      const data = await resp.json();
+      mocksList.innerHTML = originalContent;
+      alert('❌ Failed to delete: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    mocksList.innerHTML = originalContent;
+    alert('❌ Error deleting temporary mock: ' + err.message);
   }
 };
 
@@ -1050,9 +1180,17 @@ window.testMockByIndex = async function(mockIndex, apiName, method) {
       : '{}';
     
     // Pre-fill request body (with actual data from mock)
+    // Priority: predicate.request > requestPayload > empty object
     const mockRequest = mock.predicate?.request || {};
-    testBody.value = Object.keys(mockRequest).length > 0
-      ? JSON.stringify(mockRequest, null, 2)
+    const mockRequestPayload = mock.requestPayload || {};
+    
+    // Use predicate.request if not empty, otherwise use requestPayload
+    const requestBodyToUse = Object.keys(mockRequest).length > 0 
+      ? mockRequest 
+      : (Object.keys(mockRequestPayload).length > 0 ? mockRequestPayload : {});
+    
+    testBody.value = Object.keys(requestBodyToUse).length > 0
+      ? JSON.stringify(requestBodyToUse, null, 2)
       : '{}';
     
     // Clear previous result
