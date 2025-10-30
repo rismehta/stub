@@ -390,6 +390,8 @@ async function loadMocks() {
     
     const mocks = await resp.json();
     
+    console.log(`Loaded ${mocks.length} total mocks`);
+    
     // Store globally for testing
     allMocks = mocks;
     
@@ -398,19 +400,62 @@ async function loadMocks() {
       return;
     }
     
-    // Group by API name
+    // Count by source
+    const tempCount = mocks.filter(m => m._source === 'temporary' || m._isTemporary).length;
+    const githubCount = mocks.filter(m => m._source === 'external').length;
+    
+    console.log(`Temp: ${tempCount}, GitHub: ${githubCount}`);
+    
+    // Group by API name - filter out mocks with missing apiName
     const grouped = {};
+    let skippedCount = 0;
+    
     mocks.forEach(mock => {
+      if (!mock.apiName || mock.apiName.trim() === '') {
+        console.warn('Skipping mock with missing apiName:', mock);
+        skippedCount++;
+        return;
+      }
+      
       if (!grouped[mock.apiName]) {
         grouped[mock.apiName] = [];
       }
       grouped[mock.apiName].push(mock);
     });
     
-    let html = '<div class="mocks-grid">';
+    if (skippedCount > 0) {
+      console.warn(`Skipped ${skippedCount} mock(s) with missing apiName`);
+    }
     
-    Object.keys(grouped).sort().forEach(apiName => {
-      const apiMocks = grouped[apiName];
+    // Add summary banner
+    let html = '';
+    
+    if (tempCount > 0 || githubCount > 0) {
+      html += '<div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">';
+      
+      if (tempCount > 0) {
+        html += `<div style="background: #e3f2ff; padding: 0.5rem 1rem; border-radius: 6px; border-left: 4px solid #4a90e2;">
+          <strong style="color: #4a90e2;">Temporary:</strong> ${tempCount} mock${tempCount > 1 ? 's' : ''}
+        </div>`;
+      }
+      
+      if (githubCount > 0) {
+        html += `<div style="background: #f3e5f5; padding: 0.5rem 1rem; border-radius: 6px; border-left: 4px solid #6e5494;">
+          <strong style="color: #6e5494;">GitHub:</strong> ${githubCount} mock${githubCount > 1 ? 's' : ''}
+        </div>`;
+      }
+      
+      html += '</div>';
+    }
+    
+    html += '<div class="mocks-grid">';
+    
+    const sortedApiNames = Object.keys(grouped).sort();
+    console.log(`Rendering ${sortedApiNames.length} API groups`);
+    
+    sortedApiNames.forEach((apiName, groupIndex) => {
+      try {
+        const apiMocks = grouped[apiName];
       // Ensure path starts with single slash
       const displayPath = apiName.startsWith('/') ? apiName : `/${apiName}`;
       
@@ -497,8 +542,23 @@ async function loadMocks() {
           </div>
         </div>
       `;
+      } catch (err) {
+        console.error(`Error rendering API group "${apiName}":`, err);
+        html += `
+          <div class="mock-card" style="border-left: 4px solid #dc3545;">
+            <div class="mock-header">
+              <h3>${apiName}</h3>
+              <span style="color: #dc3545; font-size: 0.9rem;">⚠️ Rendering Error</span>
+            </div>
+            <div style="padding: 1rem; color: #721c24; background: #f8d7da; border-radius: 4px;">
+              <strong>Error:</strong> ${err.message}
+            </div>
+          </div>
+        `;
+      }
     });
     
+    console.log('Finished rendering all groups');
     html += '</div>';
     mocksList.innerHTML = html;
     

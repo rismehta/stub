@@ -995,7 +995,9 @@ router.get('/mocks', async (req, res) => {
       }));
       
       // Return temp mocks first (so they appear at the top of the list)
-      return res.json([...tempMocksWithSource, ...externalMocksWithSource]);
+      const combinedMocks = [...tempMocksWithSource, ...externalMocksWithSource];
+      console.log(`Returning ${combinedMocks.length} total mocks to UI (${tempMocksWithSource.length} temp + ${externalMocksWithSource.length} external)`);
+      return res.json(combinedMocks);
     }
     
     // Default: Load from MongoDB
