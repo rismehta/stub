@@ -13,14 +13,22 @@ const { reloadAllImposters, reloadFromExternal } = require('./routes/Api');
 const app = express();
 
 app.use(cors());
-// Increase payload limit for large mock responses and dynamic functions
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+
+// Static files (no body parsing needed)
 app.use(express.static(path.join(__dirname, 'public')));
+
+// API routes need JSON parsing
+app.use('/api', bodyParser.json({ limit: '10mb' }));
+app.use('/api', bodyParser.urlencoded({ limit: '10mb', extended: true }));
 app.use('/api', apiRoutes);
 
 // Forward all mock API requests to local Mountebank imposter using axios
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
+
+// Mock route needs flexible body parsing - accept any content type (JSON, XML, text, binary)
+// Use express.raw() to get raw buffer, then conditionally parse based on Content-Type
+app.use('/mock', express.raw({ type: '*/*', limit: '10mb' }));
+
 app.use('/mock', async (req, res) => {
   const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url}`;
   
@@ -58,9 +66,30 @@ app.use('/mock', async (req, res) => {
       console.log(`  ${key}: ${value}`);
     });
     
-    // Log request body
-    if (req.body && Object.keys(req.body).length > 0) {
-      console.log('Request Body:', JSON.stringify(req.body, null, 2));
+    // Log request body (handle raw buffer)
+    if (req.body && Buffer.isBuffer(req.body) && req.body.length > 0) {
+      const contentType = req.headers['content-type'] || '';
+      try {
+        if (contentType.includes('application/json')) {
+          // Parse and pretty-print JSON
+          const jsonBody = JSON.parse(req.body.toString('utf8'));
+          console.log('Request Body (JSON):', JSON.stringify(jsonBody, null, 2));
+        } else if (contentType.includes('xml') || contentType.includes('soap')) {
+          // Log XML as string (truncate if too long)
+          const xmlBody = req.body.toString('utf8');
+          console.log('Request Body (XML):', xmlBody.length > 500 ? xmlBody.substring(0, 500) + '...' : xmlBody);
+        } else {
+          // Log as text or size
+          const textBody = req.body.toString('utf8');
+          if (textBody.length > 500) {
+            console.log('Request Body:', `${textBody.substring(0, 500)}... (${req.body.length} bytes total)`);
+          } else {
+            console.log('Request Body:', textBody);
+          }
+        }
+      } catch (err) {
+        console.log('Request Body:', `Binary data (${req.body.length} bytes)`);
+      }
     } else {
       console.log('Request Body: None');
     }
