@@ -179,7 +179,10 @@ function buildStubs(apiMocks) {
     }
     
     // If same specificity, newer first
-    return new Date(b.createdAt) - new Date(a.createdAt);
+    // Handle different date field names: createdAt (MongoDB), _uploadedAt (temp mocks), or none (external mocks)
+    const dateA = a.createdAt || a._uploadedAt || 0;
+    const dateB = b.createdAt || b._uploadedAt || 0;
+    return new Date(dateB) - new Date(dateA);
   });
   
   console.log('Stub order (most specific first):');
@@ -498,16 +501,31 @@ function buildStubs(apiMocks) {
                     }
                   }
                   
+                  // Serialize body based on Content-Type
+                  let finalBody;
+                  const contentType = headers['Content-Type'] || headers['content-type'] || '';
+                  
+                  if (contentType.includes('application/json')) {
+                    // For JSON responses, stringify objects to preserve XML strings within JSON
+                    finalBody = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
+                  } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
+                    // For XML responses, return as string
+                    finalBody = responseBody;
+                  } else {
+                    // For other types, return as-is (Mountebank will handle it)
+                    finalBody = responseBody;
+                  }
+                  
                   resolve({
                     statusCode: mockData.statusCode || 200,
                     headers: headers,
-                    body: responseBody
+                    body: finalBody
                   });
                 } catch (err) {
                   resolve({
                     statusCode: 500,
                     headers: { 'Content-Type': 'application/json' },
-                    body: { error: 'Failed to parse mock response', details: err.message }
+                    body: JSON.stringify({ error: 'Failed to parse mock response', details: err.message })
                   });
                 }
               });
@@ -517,7 +535,7 @@ function buildStubs(apiMocks) {
               resolve({
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
-                body: { error: 'Failed to fetch mock from EDS', details: err.message }
+                body: JSON.stringify({ error: 'Failed to fetch mock from EDS', details: err.message })
               });
             });
             
@@ -543,11 +561,23 @@ function buildStubs(apiMocks) {
     else {
       console.log(`   Static response (fallback)`);
       
+      // Serialize body based on Content-Type for static responses
+      let finalBody;
+      const contentType = headers['content-type'] || headers['Content-Type'] || '';
+      
+      if (contentType.includes('application/json') && typeof doc.responseBody === 'object') {
+        // For JSON responses with objects, stringify to preserve XML strings within JSON
+        finalBody = JSON.stringify(doc.responseBody);
+      } else {
+        // For other types or already-string responses, return as-is
+        finalBody = doc.responseBody;
+      }
+      
       response = {
         is: {
           statusCode: 200,
           headers: headers,
-          body: doc.responseBody
+          body: finalBody
         }
       };
     }
@@ -1100,14 +1130,25 @@ router.post('/mocks/upload-temp', async (req, res) => {
     }
     
     // Reload imposter with all mocks (temp + GitHub)
+    let reloadSuccess = false;
+    let reloadError = null;
     try {
       const externalMocks = await fetchMocksFromExternal();
       const allMocks = [...temporaryMocks, ...externalMocks];
       await upsertImposter(allMocks);
       console.log(`Reloaded imposter with ${temporaryMocks.length} temp mocks + ${externalMocks.length} GitHub mocks`);
+      reloadSuccess = true;
     } catch (reloadErr) {
       console.error('Failed to reload imposter after adding temp mock:', reloadErr);
-      // Continue anyway - mock is in memory
+      reloadError = reloadErr.message;
+      // If reload fails completely, remove the temp mock to avoid inconsistent state
+      const addedIndex = temporaryMocks.findIndex(m => mocksMatch(m, tempMock));
+      if (addedIndex >= 0) {
+        temporaryMocks.splice(addedIndex, 1);
+        console.log('Removed temp mock from memory due to reload failure');
+      }
+      // Rethrow to return error to user
+      throw new Error(`Failed to reload imposter: ${reloadErr.message}`);
     }
     
     res.json({
@@ -1115,7 +1156,8 @@ router.post('/mocks/upload-temp', async (req, res) => {
       mock: tempMock,
       note: 'This mock is in-memory only. It will be removed when you reload from GitHub or push this mock to GitHub.',
       totalTemporaryMocks: temporaryMocks.length,
-      testUrl: `${req.protocol}://${req.get('host')}/${tempMock.apiName}`
+      testUrl: `${req.protocol}://${req.get('host')}/${tempMock.apiName}`,
+      imposterReloaded: reloadSuccess
     });
   } catch (err) {
     console.error('Failed to upload temporary mock:', err);
