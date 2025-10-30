@@ -235,28 +235,49 @@ function buildStubs(apiMocks) {
         console.log(`Body match (regex): ${jsonPath} matches ${pattern}`);
       });
       
-      // Add non-regex predicates (using contains for strings, JSONPath for booleans/numbers)
+      // Add non-regex predicates (using hybrid approach for booleans/numbers)
       if (nonRegexPred && Object.keys(nonRegexPred).length > 0) {
         try {
-          // Check if predicate has actual boolean/number values (not inside JSON strings)
-          // Arrays with only string values can be handled by 'contains', so we only check for boolean/number
-          const hasBooleansOrNumbers = (obj) => {
+          // Extract only boolean/number fields with their paths
+          const booleanNumberFields = [];
+          const extractBooleanNumberFields = (obj, pathPrefix = '$') => {
             if (typeof obj !== 'object' || obj === null) {
-              return typeof obj === 'boolean' || typeof obj === 'number';
+              return;
             }
-            if (Array.isArray(obj)) {
-              // Check array elements recursively
-              return obj.some(item => hasBooleansOrNumbers(item));
+            
+            for (const [key, value] of Object.entries(obj)) {
+              const currentPath = `${pathPrefix}.${key}`;
+              
+              if (typeof value === 'boolean' || typeof value === 'number') {
+                // Found a boolean/number field
+                booleanNumberFields.push({ jsonPath: currentPath, value });
+              } else if (typeof value === 'object' && !Array.isArray(value)) {
+                // Recurse into nested objects
+                extractBooleanNumberFields(value, currentPath);
+              } else if (Array.isArray(value)) {
+                // Check array elements for booleans/numbers
+                value.forEach((item, index) => {
+                  if (typeof item === 'boolean' || typeof item === 'number') {
+                    booleanNumberFields.push({ jsonPath: `${currentPath}[${index}]`, value: item });
+                  } else if (typeof item === 'object' && item !== null) {
+                    extractBooleanNumberFields(item, `${currentPath}[${index}]`);
+                  }
+                });
+              }
             }
-            return Object.values(obj).some(value => hasBooleansOrNumbers(value));
           };
           
-          const hasBooleanOrNumber = hasBooleansOrNumbers(nonRegexPred);
+          extractBooleanNumberFields(nonRegexPred);
           
-          if (hasBooleanOrNumber) {
-            // Has boolean/number values → Use JSONPath + equals for each field
-            // This allows matching specific fields without caring about extra fields in nested structures
-            extractFieldsWithPath(nonRegexPred, '$').forEach(({ jsonPath, value }) => {
+          if (booleanNumberFields.length > 0) {
+            // HYBRID APPROACH: Use contains for overall structure + JSONPath equals for booleans/numbers
+            
+            // 1. Add contains predicate for the full structure (handles all string fields + nesting)
+            predicates.push({ contains: { body: nonRegexPred } });
+            console.log(`Body match (contains): full structure with ${booleanNumberFields.length} boolean/number field(s)`);
+            
+            // 2. Add JSONPath equals ONLY for boolean/number fields (ensures exact boolean/number matching)
+            booleanNumberFields.forEach(({ jsonPath, value }) => {
               predicates.push({
                 equals: {
                   body: {
@@ -272,8 +293,8 @@ function buildStubs(apiMocks) {
             console.log(`Body match (contains): string values only`);
           }
         } catch (err) {
-          // Fallback if JSON.stringify fails
-          console.warn(`Failed to stringify predicate, using contains as fallback: ${err.message}`);
+          // Fallback if extraction fails
+          console.warn(`Failed to process predicate, using contains as fallback: ${err.message}`);
           predicates.push({ contains: { body: nonRegexPred } });
         }
       }
