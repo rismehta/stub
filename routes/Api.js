@@ -270,13 +270,47 @@ function buildStubs(apiMocks) {
           extractBooleanNumberFields(nonRegexPred);
           
           if (booleanNumberFields.length > 0) {
-            // HYBRID APPROACH: Use contains for overall structure + JSONPath equals for booleans/numbers
+            // HYBRID APPROACH: Use contains for string-only structure + JSONPath equals for booleans/numbers
             
-            // 1. Add contains predicate for the full structure (handles all string fields + nesting)
-            predicates.push({ contains: { body: nonRegexPred } });
-            console.log(`Body match (contains): full structure with ${booleanNumberFields.length} boolean/number field(s)`);
+            // 1. Create a string-only version of the predicate (strip out booleans/numbers)
+            const stringOnlyPredicate = JSON.parse(JSON.stringify(nonRegexPred), (key, value) => {
+              // Remove boolean/number values (contains can't handle them)
+              if (typeof value === 'boolean' || typeof value === 'number') {
+                return undefined; // Removes the key-value pair
+              }
+              return value;
+            });
             
-            // 2. Add JSONPath equals ONLY for boolean/number fields (ensures exact boolean/number matching)
+            // Remove empty objects created by stripping booleans/numbers
+            const cleanEmptyObjects = (obj) => {
+              if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) {
+                return obj;
+              }
+              
+              const cleaned = {};
+              for (const [key, value] of Object.entries(obj)) {
+                if (value !== undefined) {
+                  const cleanedValue = cleanEmptyObjects(value);
+                  // Only add if not an empty object
+                  if (typeof cleanedValue !== 'object' || cleanedValue === null || Array.isArray(cleanedValue) || Object.keys(cleanedValue).length > 0) {
+                    cleaned[key] = cleanedValue;
+                  }
+                }
+              }
+              return cleaned;
+            };
+            
+            const finalStringPredicate = cleanEmptyObjects(stringOnlyPredicate);
+            
+            // 2. Add contains predicate ONLY if there are string fields left
+            if (Object.keys(finalStringPredicate).length > 0) {
+              predicates.push({ contains: { body: finalStringPredicate } });
+              console.log(`Body match (contains): string-only structure (${booleanNumberFields.length} boolean/number field(s) stripped)`);
+            } else {
+              console.log(`Body match: skipping contains (no string fields, only ${booleanNumberFields.length} boolean/number field(s))`);
+            }
+            
+            // 3. Add JSONPath equals for each boolean/number field
             booleanNumberFields.forEach(({ jsonPath, value }) => {
               predicates.push({
                 equals: {
