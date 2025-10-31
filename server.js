@@ -26,8 +26,9 @@ app.use('/api', apiRoutes);
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 
 // Mock route needs flexible body parsing - accept any content type (JSON, XML, text, binary)
-// Use express.raw() to get raw buffer, then conditionally parse based on Content-Type
-app.use('/mock', express.raw({ type: '*/*', limit: '10mb' }));
+// Parse JSON as JSON (for JSONPath predicates to work), everything else as raw
+app.use('/mock', express.json({ type: 'application/json', limit: '10mb' }));
+app.use('/mock', express.raw({ type: (req) => req.get('content-type') !== 'application/json', limit: '10mb' }));
 
 app.use('/mock', async (req, res) => {
   const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url}`;
@@ -66,29 +67,34 @@ app.use('/mock', async (req, res) => {
       console.log(`  ${key}: ${value}`);
     });
     
-    // Log request body (handle raw buffer)
-    if (req.body && Buffer.isBuffer(req.body) && req.body.length > 0) {
+    // Log request body (handle both JSON objects and raw buffers)
+    if (req.body) {
       const contentType = req.headers['content-type'] || '';
-      try {
-        if (contentType.includes('application/json')) {
-          // Parse and pretty-print JSON
-          const jsonBody = JSON.parse(req.body.toString('utf8'));
-          console.log('Request Body (JSON):', JSON.stringify(jsonBody, null, 2));
-        } else if (contentType.includes('xml') || contentType.includes('soap')) {
-          // Log XML as string (truncate if too long)
-          const xmlBody = req.body.toString('utf8');
-          console.log('Request Body (XML):', xmlBody.length > 500 ? xmlBody.substring(0, 500) + '...' : xmlBody);
-        } else {
-          // Log as text or size
-          const textBody = req.body.toString('utf8');
-          if (textBody.length > 500) {
-            console.log('Request Body:', `${textBody.substring(0, 500)}... (${req.body.length} bytes total)`);
+      
+      if (typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+        // Already parsed as JSON object by express.json()
+        console.log('Request Body (JSON):', JSON.stringify(req.body, null, 2));
+      } else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+        // Raw buffer (XML, binary, etc.)
+        try {
+          if (contentType.includes('xml') || contentType.includes('soap')) {
+            // Log XML as string (truncate if too long)
+            const xmlBody = req.body.toString('utf8');
+            console.log('Request Body (XML):', xmlBody.length > 500 ? xmlBody.substring(0, 500) + '...' : xmlBody);
           } else {
-            console.log('Request Body:', textBody);
+            // Log as text or size
+            const textBody = req.body.toString('utf8');
+            if (textBody.length > 500) {
+              console.log('Request Body:', `${textBody.substring(0, 500)}... (${req.body.length} bytes total)`);
+            } else {
+              console.log('Request Body:', textBody);
+            }
           }
+        } catch (err) {
+          console.log('Request Body:', `Binary data (${req.body.length} bytes)`);
         }
-      } catch (err) {
-        console.log('Request Body:', `Binary data (${req.body.length} bytes)`);
+      } else {
+        console.log('Request Body: None');
       }
     } else {
       console.log('Request Body: None');
