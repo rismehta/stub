@@ -8,7 +8,7 @@ const path = require('path');
 const axios = require('axios');
 
 const apiRoutes = require('./routes/Api');
-const { reloadAllImposters, reloadFromExternal } = require('./routes/Api');
+const { reloadAllImposters, reloadFromExternal, waitForMountebank } = require('./routes/Api');
 
 const app = express();
 
@@ -140,6 +140,20 @@ mongoose.connect(MONGODB_URI)
   app.listen(PORT, async () => {
     console.log(`Backend server running on port ${PORT}`);
     
+    // CRITICAL: Wait for Mountebank to be ready before loading mocks
+    // This prevents cold start failures on Render/Heroku where Mountebank takes time to start
+    console.log('\n========== WAITING FOR MOUNTEBANK ==========');
+    try {
+      await waitForMountebank(15, 1000); // 15 retries, starting at 1s (max ~30s total)
+      console.log('============================================\n');
+    } catch (err) {
+      console.error('============================================');
+      console.error('WARNING: Mountebank not ready, mocks will not be loaded');
+      console.error('   You can manually trigger reload later via /api/reloadFromExternal');
+      console.error('============================================\n');
+      return; // Exit early, don't try to load mocks if Mountebank isn't ready
+    }
+    
     // Check if should load from external source or MongoDB
     const loadFromExternal = true; // todo: can be configured
     
@@ -149,16 +163,16 @@ mongoose.connect(MONGODB_URI)
       console.log('Auto-loading mocks from external repository (ephemeral mode)...');
       try {
         const results = await reloadFromExternal(false); // ← Never persist to MongoDB
-        console.log(`✅ Successfully loaded ${results.mocksLoaded} mocks from external source`);
+        console.log(`Successfully loaded ${results.mocksLoaded} mocks from external source`);
         console.log('   (Loaded to Mountebank in-memory only, not persisted to MongoDB)');
       } catch (err) {
-        console.error('❌ Error loading from external:', err.message);
+        console.error('Error loading from external:', err.message);
         console.log('Falling back to MongoDB...');
         try {
           const count = await reloadAllImposters();
-          console.log(`✅ Loaded ${count} mocks from MongoDB (fallback)`);
+          console.log(`Loaded ${count} mocks from MongoDB (fallback)`);
         } catch (fallbackErr) {
-          console.error('❌ Fallback also failed:', fallbackErr.message);
+          console.error('Fallback also failed:', fallbackErr.message);
         }
       }
     } else {
@@ -166,9 +180,9 @@ mongoose.connect(MONGODB_URI)
       console.log('Auto-reloading all mocks from database...');
       try {
         const count = await reloadAllImposters();
-        console.log(`✅ Successfully reloaded ${count} mocks into Mountebank on startup`);
+        console.log(`Successfully reloaded ${count} mocks into Mountebank on startup`);
       } catch (err) {
-        console.error('❌ Error reloading imposters on startup:', err.message);
+        console.error('Error reloading imposters on startup:', err.message);
       }
     }
   });

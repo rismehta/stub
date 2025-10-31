@@ -21,15 +21,51 @@ let loadedFunctions = {};
 let temporaryMocks = [];
 
 /**
- * Check if two mocks match (same API endpoint and method)
+ * Deep equality check for predicate objects
+ * Used to compare if two mocks have identical predicates
+ */
+function predicatesEqual(pred1, pred2) {
+  // Handle null/undefined cases
+  if (pred1 === pred2) return true;
+  if (!pred1 || !pred2) return false;
+  
+  // Convert to JSON strings for deep comparison
+  // Sort keys to ensure consistent comparison
+  try {
+    const normalize = (obj) => JSON.stringify(obj, Object.keys(obj || {}).sort());
+    return normalize(pred1.request || {}) === normalize(pred2.request || {}) &&
+           normalize(pred1.headers || {}) === normalize(pred2.headers || {}) &&
+           normalize(pred1.query || {}) === normalize(pred2.query || {});
+  } catch (e) {
+    // If JSON serialization fails, consider them different
+    return false;
+  }
+}
+
+/**
+ * Check if two mocks match (same API endpoint, method, AND predicate)
  * Used to detect when a temporary mock should be removed because it's now in GitHub
+ * 
+ * Two mocks are considered duplicates only if ALL of the following match:
+ * 1. API path (normalized)
+ * 2. HTTP method (normalized)
+ * 3. Predicate structure (deep equality on request/headers/query)
  */
 function mocksMatch(mock1, mock2) {
   const normalizeApiName = (name) => (name || '').replace(/^\/+/, '').toLowerCase();
   const normalizeMethod = (method) => (method || 'POST').toUpperCase();
   
-  return normalizeApiName(mock1.apiName) === normalizeApiName(mock2.apiName) &&
-         normalizeMethod(mock1.method) === normalizeMethod(mock2.method);
+  // Check path and method first (fast comparison)
+  if (normalizeApiName(mock1.apiName) !== normalizeApiName(mock2.apiName)) {
+    return false;
+  }
+  if (normalizeMethod(mock1.method) !== normalizeMethod(mock2.method)) {
+    return false;
+  }
+  
+  // Path and method match - now check predicates (slower comparison)
+  // This allows multiple mocks with different predicates on the same path
+  return predicatesEqual(mock1.predicate, mock2.predicate);
 }
 
 /**
@@ -163,6 +199,51 @@ function extractRegexPatterns(predicate, pathPrefix = '$') {
   }
   
   return { regexFields, nonRegexPred };
+}
+
+/**
+ * Wait for Mountebank to be ready (health check with retry)
+ * Uses exponential backoff to handle cold starts gracefully
+ * 
+ * @param {number} maxRetries - Maximum number of retry attempts (default: 10)
+ * @param {number} initialDelayMs - Initial delay in milliseconds (default: 1000ms)
+ * @returns {Promise<boolean>} - Resolves when Mountebank is ready, rejects if max retries exceeded
+ */
+async function waitForMountebank(maxRetries = 10, initialDelayMs = 1000) {
+  let retries = 0;
+  let delayMs = initialDelayMs;
+  
+  console.log('Checking Mountebank readiness...');
+  
+  while (retries < maxRetries) {
+    try {
+      // Try to ping Mountebank root endpoint
+      const response = await axios.get(`${MB_URL}`, { timeout: 3000 });
+      
+      if (response.status === 200) {
+        console.log(`Mountebank is ready (took ${retries} retries)`);
+        return true;
+      }
+    } catch (err) {
+      retries++;
+      
+      if (retries >= maxRetries) {
+        console.error(`Mountebank not ready after ${maxRetries} retries (${(maxRetries * initialDelayMs) / 1000}s)`);
+        throw new Error(`Mountebank not available after ${maxRetries} retries: ${err.message}`);
+      }
+      
+      console.log(`Mountebank not ready (attempt ${retries}/${maxRetries}), retrying in ${delayMs}ms...`);
+      console.log(`   Error: ${err.message}`);
+      
+      // Wait before next retry (exponential backoff with max cap)
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      
+      // Exponential backoff: double the delay each time, max 5 seconds
+      delayMs = Math.min(delayMs * 2, 5000);
+    }
+  }
+  
+  return false;
 }
 
 // Build Mountebank stubs from DB records with smart defaults
@@ -1551,3 +1632,4 @@ router.get('/callback-forwarder', async (req, res) => {
 module.exports = router;
 module.exports.reloadAllImposters = reloadAllImposters;
 module.exports.reloadFromExternal = reloadFromExternal;
+module.exports.waitForMountebank = waitForMountebank;
