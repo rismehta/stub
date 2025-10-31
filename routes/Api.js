@@ -307,16 +307,16 @@ function buildStubs(apiMocks) {
       // REGEX SUPPORT: Extract regex patterns and non-regex parts
       const { regexFields, nonRegexPred } = extractRegexPatterns(requestPred);
       
-      // Add regex-based predicates (using JSONPath + matches operator)
+      // Add regex-based predicates (using JSONPath selector + matches operator)
+      // Mountebank requires jsonpath and matches to be at the same level, not nested
       regexFields.forEach(({ jsonPath, pattern }) => {
-        predicates.push({
-          matches: {
-            body: {
-              [jsonPath]: pattern
-            }
-          }
-        });
+        const regexPredicate = {
+          matches: { body: pattern },  // Pattern for the selected field value
+          jsonpath: { selector: jsonPath }  // JSONPath to select the field
+        };
+        predicates.push(regexPredicate);
         console.log(`Body match (regex): ${jsonPath} matches ${pattern}`);
+        console.log(`  Generated predicate:`, JSON.stringify(regexPredicate, null, 2));
       });
       
       // Add non-regex predicates (using hybrid approach for booleans/numbers)
