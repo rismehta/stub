@@ -25,10 +25,57 @@ app.use('/api', apiRoutes);
 // Forward all mock API requests to local Mountebank imposter using axios
 const MB_IMPOSTER_PORT = process.env.MB_IMPOSTER_PORT || 4000;
 
-// Mock route needs flexible body parsing - accept any content type (JSON, XML, text, binary)
-// Parse JSON as JSON (for JSONPath predicates to work), everything else as raw
-app.use('/mock', express.json({ type: 'application/json', limit: '10mb' }));
-app.use('/mock', express.raw({ type: (req) => req.get('content-type') !== 'application/json', limit: '10mb' }));
+// Custom middleware to intelligently detect JSON vs XML/other content
+// This handles cases where Content-Type is missing or incorrect
+app.use('/mock', express.raw({ type: '*/*', limit: '10mb' }));
+
+app.use('/mock', (req, res, next) => {
+  // If body is empty or undefined, skip processing
+  if (!req.body || req.body.length === 0) {
+    req.body = {};
+    return next();
+  }
+
+  const contentType = req.get('content-type') || '';
+  
+  // Try to detect content type from body if Content-Type is missing or ambiguous
+  const bodyStart = req.body.toString('utf8', 0, Math.min(100, req.body.length)).trim();
+  
+  // Check if body looks like XML (starts with < or <?xml)
+  const looksLikeXml = bodyStart.startsWith('<') || bodyStart.startsWith('<?xml');
+  
+  // Check if body looks like JSON (starts with { or [)
+  const looksLikeJson = bodyStart.startsWith('{') || bodyStart.startsWith('[');
+  
+  // Decision logic:
+  // 1. If Content-Type explicitly says XML → keep as Buffer
+  if (contentType.includes('xml') || contentType.includes('soap')) {
+    console.log('Detected XML/SOAP content type, keeping as Buffer');
+    return next();
+  }
+  
+  // 2. If Content-Type says JSON → try to parse as JSON
+  // 3. If Content-Type is missing/text/plain AND body looks like JSON → try to parse
+  const shouldParseAsJson = contentType.includes('application/json') ||
+                           (contentType === '' && looksLikeJson) ||
+                           (contentType.includes('text/plain') && looksLikeJson && !looksLikeXml);
+  
+  if (shouldParseAsJson) {
+    try {
+      req.body = JSON.parse(req.body.toString('utf8'));
+      console.log('Successfully parsed body as JSON');
+    } catch (err) {
+      console.warn(`JSON parse failed: ${err.message}`);
+      console.warn(`Body starts with: ${bodyStart.substring(0, 50)}`);
+      console.warn('Keeping as Buffer');
+      // Keep as Buffer if JSON parsing fails
+    }
+  } else {
+    console.log(`Body detected as non-JSON (Content-Type: ${contentType || 'none'}, starts with: ${bodyStart.substring(0, 20)}), keeping as Buffer`);
+  }
+  
+  next();
+});
 
 app.use('/mock', async (req, res) => {
   const targetUrl = `http://localhost:${MB_IMPOSTER_PORT}${req.url}`;
