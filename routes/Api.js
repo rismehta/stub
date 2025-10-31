@@ -605,24 +605,35 @@ function buildStubs(apiMocks) {
                   
                   // Serialize body based on Content-Type
                   let finalBody;
+                  let responseMode;
                   const contentType = headers['Content-Type'] || headers['content-type'] || '';
                   
                   if (contentType.includes('application/json')) {
                     // For JSON responses, stringify objects to preserve XML strings within JSON
                     finalBody = typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody);
+                    responseMode = undefined; // Default JSON mode (Mountebank will parse it)
                   } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
-                    // For XML responses, return as string
-                    finalBody = responseBody;
+                    // For XML responses, return as raw text (no encoding)
+                    finalBody = typeof responseBody === 'string' ? responseBody : String(responseBody);
+                    responseMode = 'text'; // Prevent Mountebank from encoding XML
                   } else {
                     // For other types, return as-is (Mountebank will handle it)
                     finalBody = responseBody;
+                    responseMode = 'text'; // Treat as text to avoid encoding
                   }
                   
-                  resolve({
+                  const response = {
                     statusCode: mockData.statusCode || 200,
                     headers: headers,
                     body: finalBody
-                  });
+                  };
+                  
+                  // Add _mode for non-JSON responses to prevent encoding
+                  if (responseMode) {
+                    response._mode = responseMode;
+                  }
+                  
+                  resolve(response);
                 } catch (err) {
                   resolve({
                     statusCode: 500,
@@ -665,23 +676,37 @@ function buildStubs(apiMocks) {
       
       // Serialize body based on Content-Type for static responses
       let finalBody;
+      let responseMode;
       const contentType = headers['content-type'] || headers['Content-Type'] || '';
       
       if (contentType.includes('application/json') && typeof doc.responseBody === 'object') {
         // For JSON responses with objects, stringify to preserve XML strings within JSON
         finalBody = JSON.stringify(doc.responseBody);
+        responseMode = undefined; // Default JSON mode
+      } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
+        // For XML responses, return as raw text (no encoding)
+        finalBody = typeof doc.responseBody === 'string' ? doc.responseBody : String(doc.responseBody);
+        responseMode = 'text'; // Prevent Mountebank from encoding XML
       } else {
         // For other types or already-string responses, return as-is
         finalBody = doc.responseBody;
+        responseMode = 'text'; // Treat as text to avoid encoding
       }
       
-      response = {
+      const responseObj = {
         is: {
           statusCode: 200,
           headers: headers,
           body: finalBody
         }
       };
+      
+      // Add _mode for non-JSON responses to prevent encoding
+      if (responseMode) {
+        responseObj.is._mode = responseMode;
+      }
+      
+      response = responseObj;
     }
     
     // Add latency behavior (Mountebank handles this, not the inject function!)
