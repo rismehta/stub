@@ -152,20 +152,21 @@ function extractFieldsWithPath(predicate, pathPrefix = '$') {
  */
 function extractRegexPatterns(predicate, pathPrefix = '$') {
   const regexFields = [];
+  const xpathFields = [];
   const nonRegexPred = {};
   
   if (!predicate || typeof predicate !== 'object' || Array.isArray(predicate)) {
-    return { regexFields, nonRegexPred: predicate };
+    return { regexFields, xpathFields, nonRegexPred: predicate };
   }
   
-  // OPTIMIZATION: Quick pre-check to avoid walking the tree if no regex patterns exist
+  // OPTIMIZATION: Quick pre-check to avoid walking the tree if no regex/xpath patterns exist
   // This is much faster than always traversing the entire object
   if (pathPrefix === '$') {  // Only check at root level
     try {
       const predicateStr = JSON.stringify(predicate);
-      if (!predicateStr.includes('regex:')) {
-        // No regex patterns found - return entire predicate as non-regex
-        return { regexFields: [], nonRegexPred: predicate };
+      if (!predicateStr.includes('regex:') && !predicateStr.includes('_xpath')) {
+        // No regex/xpath patterns found - return entire predicate as non-regex
+        return { regexFields: [], xpathFields: [], nonRegexPred: predicate };
       }
     } catch (err) {
       // If stringify fails, fall through to regular processing
@@ -181,12 +182,20 @@ function extractRegexPatterns(predicate, pathPrefix = '$') {
       const pattern = value.substring(6); // "regex:".length = 6
       regexFields.push({ jsonPath: currentPath, pattern });
       // Don't add to nonRegexPred
+    } else if (key === '_xpath' && typeof value === 'object' && value.selector && value.pattern) {
+      // XPath predicate for XML matching
+      xpathFields.push({ 
+        selector: value.selector, 
+        pattern: value.pattern 
+      });
+      // Don't add to nonRegexPred
     } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       // Recursively process nested objects
-      const { regexFields: nestedRegex, nonRegexPred: nestedNonRegex } = 
+      const { regexFields: nestedRegex, xpathFields: nestedXpath, nonRegexPred: nestedNonRegex } = 
         extractRegexPatterns(value, currentPath);
       
       regexFields.push(...nestedRegex);
+      xpathFields.push(...nestedXpath);
       
       // Only add to nonRegexPred if it has content
       if (nestedNonRegex && Object.keys(nestedNonRegex).length > 0) {
@@ -198,7 +207,7 @@ function extractRegexPatterns(predicate, pathPrefix = '$') {
     }
   }
   
-  return { regexFields, nonRegexPred };
+  return { regexFields, xpathFields, nonRegexPred };
 }
 
 /**
@@ -304,8 +313,8 @@ function buildStubs(apiMocks) {
         : null;
 
     if (requestPred) {
-      // REGEX SUPPORT: Extract regex patterns and non-regex parts
-      const { regexFields, nonRegexPred } = extractRegexPatterns(requestPred);
+      // REGEX/XPATH SUPPORT: Extract regex patterns, xpath patterns, and non-regex parts
+      const { regexFields, xpathFields, nonRegexPred } = extractRegexPatterns(requestPred);
       
       // Add regex-based predicates (using JSONPath selector + matches operator)
       // Mountebank requires jsonpath and matches to be at the same level, not nested
@@ -317,6 +326,18 @@ function buildStubs(apiMocks) {
         predicates.push(regexPredicate);
         console.log(`Body match (regex): ${jsonPath} matches ${pattern}`);
         console.log(`  Generated predicate:`, JSON.stringify(regexPredicate, null, 2));
+      });
+      
+      // Add xpath-based predicates (for XML body matching)
+      // Mountebank syntax: { matches: { body: pattern }, xpath: { selector: xpath } }
+      xpathFields.forEach(({ selector, pattern }) => {
+        const xpathPredicate = {
+          matches: { body: pattern },  // Pattern for the selected XML element value
+          xpath: { selector: selector }  // XPath to select the XML element
+        };
+        predicates.push(xpathPredicate);
+        console.log(`Body match (xpath): ${selector} matches ${pattern}`);
+        console.log(`  Generated predicate:`, JSON.stringify(xpathPredicate, null, 2));
       });
       
       // Add non-regex predicates (using hybrid approach for booleans/numbers)
@@ -396,9 +417,9 @@ function buildStubs(apiMocks) {
         }
       }
       
-      // If only regex fields and no non-regex fields, ensure we have at least one predicate
-      if (regexFields.length === 0 && (!nonRegexPred || Object.keys(nonRegexPred).length === 0)) {
-        console.warn(`Empty predicate after regex extraction, skipping body match`);
+      // If only regex/xpath fields and no non-regex fields, ensure we have at least one predicate
+      if (regexFields.length === 0 && xpathFields.length === 0 && (!nonRegexPred || Object.keys(nonRegexPred).length === 0)) {
+        console.warn(`Empty predicate after regex/xpath extraction, skipping body match`);
       }
     }
 
